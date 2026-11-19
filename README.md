@@ -1,4 +1,4 @@
-# 模式交换 · dsh-mode-exchange
+# Agent模式切换 · dsh-mode-exchange
 
 > A generic DSH plugin to dynamically switch to any Agent mode (Standard, PTC, Code, etc.)
 > in an existing session. It reconfigures the toolset and system prompt on the fly,
