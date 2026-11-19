@@ -1,0 +1,56 @@
+# ---- 依赖 ----
+node_modules/
+.pnpm-store/
+.pnp.*
+.yarn/*
+
+# ---- 打包产物 ----
+*.tgz
+*.vsix
+dist/
+build/Release/
+
+# ---- 本地调试 / 取证目录（不入库） ----
+# .verify/  线上排查用的脚本与截图（含桌面截图、宿主安装包转储）
+# .refs/    从宿主 app.asar 里抽出来的官方文档与源码副本，版权归上游
+# .dsh-vision-router/  截图工具的运行产物
+.verify/
+.refs/
+.dsh-vision-router/
+
+# ---- 根目录一次性排查产物 ----
+.asar-header.json
+.out-3rd.txt
+.out-3rd-clean.txt
+.pattern.txt
+.probe-grep.cjs
+.rg-guard.txt
+
+# ---- 插件运行时数据（数据目录默认落在 cwd/.dsh/mode-exchange） ----
+.dsh/
+exports/
+backups/
+reports/
+migrations/
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 日志与临时文件 ----
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.tmp
+*.bak
+*.tsbuildinfo
+cordis.patch.yml.corrupt-*
+
+# ---- 环境变量 ----
+.env
+.env.*
+!.env.example
