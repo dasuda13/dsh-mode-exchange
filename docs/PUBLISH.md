@@ -134,12 +134,46 @@ git push
 | `Authentication failed` | 密码填了账号密码，或 PAT 过期 | 重新生成 PAT，权限给 Contents: Read and write |
 | `SEC_E_NO_CREDENTIALS` / `schannel` | 本机 schannel 与代理不兼容 | `git config --local http.sslBackend openssl`；再 `git config --local http.proxy ""` |
 | `OpenSSL SSL_read: Connection reset` | 系统代理（如 `127.0.0.1:7897`）走 HTTPS 会重置 | 同上，清掉 git 的 http.proxy |
+| `Recv failure: Connection was reset` | **不是配置问题**——链路被中间设备重置。GitHub 的 IP 段在国内常被间歇性阻断，同一秒能通、下一秒被 reset | 直接重跑；本次实测重试 1~3 次必成功。连失败 5 次以上再看下面「网络不稳」一节 |
 | `LF will be replaced by CRLF` | 换行符警告 | 脚本已设 `core.autocrlf false`，可忽略 |
 
 > 本机实测：`Invoke-WebRequest` 与 `curl.exe` 走 schannel 都失败
 > （`SEC_E_NO_CREDENTIALS`），系统代理走 HTTPS 一律 ECONNRESET。
 > git 自带 OpenSSL 与自己的代理配置，所以上面的 `http.sslBackend openssl` /
 > `http.proxy ""` 就是针对这一点——**不要指望 PowerShell 的网络栈能替你验证连通性**。
+
+### 网络不稳怎么办
+
+本机到 `github.com` 的链路是**间歇性**的（同一分钟里有的请求成功、有的被 reset），
+不是配置错。三种判断手段，从便宜到贵：
+
+```powershell
+$git = "C:\Program Files\Git\cmd\git.exe"
+
+# 1) 只读探测，不碰凭据：连上就算链路通
+& $git ls-remote --heads origin        # 成功会打印 40 位 SHA
+
+# 2) 若 1) 反复失败，看是不是 TLS 后端的问题（本机系统级默认是 schannel）
+& $git -c http.sslBackend=openssl ls-remote --heads origin
+
+# 3) 走完整推送链路但用假凭据：收到 "Invalid username or token" 说明
+#    网络 + receive-pack 全通，剩下的只是登录凭据
+$env:GIT_TERMINAL_PROMPT = "0"
+& $git -c credential.helper= push https://fake-user:fake-token@github.com/dasuda13/dsh-mode-exchange.git main
+$env:GIT_TERMINAL_PROMPT = $null
+```
+
+判断结论：
+
+- 1) 成功 / 3) 报 `Invalid username or token` → **网络没问题，直接重跑 `git push`**。
+  本次实测在 4 分钟里 `push` 失败 1 次、紧接着 5 次假凭据探测全部收到 401，
+  说明是链路瞬断，不是仓库或配置问题。
+- 1) `SEC_E_NO_CREDENTIALS` → 是 TLS 后端问题，先 `git config --local http.sslBackend openssl`
+  （本仓库已设好，见 `.git/config`）。
+- 1) 稳定成功但 `push` 一直 reset → 换成 SSH 通道（`ssh.github.com:443` 本机可达）：
+  `git remote set-url origin git@github.com:dasuda13/dsh-mode-exchange.git`，
+  先配好 SSH key。
+- 一直失败且急着交付 → 走本文档「方案 C：网页拖拽上传」，或「方案 A：GITHUB_TOKEN + Node 脚本」。
 
 `.gitignore` 已合并本地规则 + GitHub 的 Node 模板，`git add .` 不会带入
 `.verify/`（21 MB 桌面截图）、`.refs/`（宿主 asar 抽取副本）、`.dsh-vision-router/`
