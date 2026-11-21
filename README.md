@@ -293,7 +293,8 @@ src/client/
 types/                  TypeScript 声明
 locale/                 插件页标题与描述（zh / en）
 docs/                   详情页、本地调试说明
-scripts/                build-client.mjs（零依赖打包）、probe.js（体检）、smoke-*.mjs（冒烟）
+scripts/                build-client.mjs（零依赖打包）、probe.js（体检）、smoke-*.mjs（冒烟）、
+                        publish-npm.*（发 npm）、push-retry.*（git 推送失败重试）
 LICENSE                 MIT
 .gitignore              依赖、构建产物、本地取证目录
 ```
@@ -307,7 +308,7 @@ LICENSE                 MIT
 
 - [docs/DETAIL.md](docs/DETAIL.md) —— 原理、为什么叫「软」切换、七步的细节、安全边界
 - [docs/LOCAL-DEV.md](docs/LOCAL-DEV.md) —— 本地加载、调试、冒烟测试清单、踩坑
-- [docs/PUBLISH.md](docs/PUBLISH.md) —— 发布到 GitHub 的三种方式、PAT 权限、常见报错；发布到 npm registry 供 DSH 用户在线安装
+- [docs/PUBLISH.md](docs/PUBLISH.md) —— 发布到 GitHub 的三种方式、PAT 权限、常见报错；发布到 npm registry 供 DSH 用户在线安装；链路被 reset 时的排查与重试
 - [CHANGELOG.md](CHANGELOG.md) —— 变更记录
 
 ## 许可

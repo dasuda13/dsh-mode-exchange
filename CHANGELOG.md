@@ -53,6 +53,13 @@
   （`0.1.0 → 0.1.1`，预发布版先落回正式号）再发，省掉「发布→被拦→手动 `npm version`→再发」
   的一轮往返；不加该开关时仍只打印三选一提示、不改 `package.json`。
 - `docs/PUBLISH.md` 的「升级版本」与参数示例补 `-Bump`，六步表中的 5/6 说明同步。
+- 新增 `scripts/push-retry.ps1` + `push-retry.cmd`：`git push` 被中间设备间歇性重置时
+  自动重试（默认 6 次，退避 2/4/6/8/8/8 秒）。只对「Recv failure / Connection reset /
+  Could not connect / timed out / early EOF / RPC failed」重试，遇到认证或分叉错误立刻停并给出处置建议；
+  推送前先看 `rev-list --count`，已同步就直接退出。
+- `docs/PUBLISH.md` 新增「网络不稳怎么办」：用 `ls-remote` / `-c http.sslBackend=openssl` /
+  假凭据 push 三种探针区分「链路瞬断」「TLS 后端」「真的没登录」，并给出换 SSH 通道与
+  网页上传两条退路；报错表补 `Recv failure: Connection was reset` 一行。
 
 ### 新增
 
