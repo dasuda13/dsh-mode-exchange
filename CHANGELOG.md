@@ -7,6 +7,9 @@
 ## [Unreleased]
 
 ### 开源准备
+- `docs/market/dasuda13__dsh-mode-exchange.yml`：提交到 awesome-dsh-plugin 收录列表的
+  条目文件（市场读 `awesome-dsh-plugin.com/plugins.json`，收录靠往该仓库提 PR 加这一个
+  YAML，没有上传接口）。`README.md` 的文档索引与目录树已同步。
 
 - 新增 `.gitignore`：排除 `node_modules/`、本地取证目录（`.verify/`、`.refs/`、
   `.dsh-vision-router/`，含桌面截图与宿主安装包转储）、运行期数据目录与临时文件。
