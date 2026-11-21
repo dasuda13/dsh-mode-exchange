@@ -47,7 +47,7 @@ Remove-Item Env:\GITHUB_TOKEN     # 用完清掉
 可选参数：`--owner` `--repo` `--branch` `--message`。
 
 > 注意：本机 PowerShell 的 `Invoke-WebRequest` / `curl.exe` 走 schannel 会报
-> `SEC_E_NO_CREDENTIALS`，本机系统代理（例如 Clash 的 127.0.0.1:7897）也不通。这个脚本用 Node 的
+> `SEC_E_NO_CREDENTIALS`，本机系统代理（例如 Clash 的 127.0.0.1:<端口>）也不通。这个脚本用 Node 的
 > `https` 直连，实测 `api.github.com` 可用，不受影响。
 
 ---
@@ -133,7 +133,7 @@ git push
 | `non-fast-forward` / `fetch first` | 远端有网页端的 Initial commit | 加 `--force`，或 `git pull --allow-unrelated-histories` 后再推 |
 | `Authentication failed` | 密码填了账号密码，或 PAT 过期 | 重新生成 PAT，权限给 Contents: Read and write |
 | `SEC_E_NO_CREDENTIALS` / `schannel` | 本机 schannel 与代理不兼容 | `git config --local http.sslBackend openssl`；再 `git config --local http.proxy ""` |
-| `OpenSSL SSL_read: Connection reset` | 系统代理（如 `127.0.0.1:7897`）走 HTTPS 会重置 | 同上，清掉 git 的 http.proxy |
+| `OpenSSL SSL_read: Connection reset` | 系统代理（如 `127.0.0.1:<端口>`）走 HTTPS 会重置 | 同上，清掉 git 的 http.proxy |
 | `Recv failure: Connection was reset` | 多数情况是 **DNS 给了个坏地址**：TCP 能连上、TLS 握手卡住，git 等 ~21 秒后报 reset | 先 `ipconfig /flushdns`（管理员）再重跑；或直接跑 `scripts\push-retry.cmd`，它每次重试前会自动清 DNS 缓存。详见下面「网络不稳」 |
 | `LF will be replaced by CRLF` | 换行符警告 | 脚本已设 `core.autocrlf false`，可忽略 |
 
@@ -158,7 +158,7 @@ git push
   ForEach-Object { $_.IPAddressToString }
 ```
 
-本机的 DNS 服务器（`10.0.8.68`）会在几个地址之间轮换，其中有些地址**能完成 TCP 握手、
+本机使用的 DNS 服务器（内网地址，用 `ipconfig /all` 可查）会在几个地址之间轮换，其中有些地址**能完成 TCP 握手、
 却卡住 TLS 握手**，git 于是在 ~21 秒后报 reset。清除缓存就会换到另一个答案：
 
 ```powershell
