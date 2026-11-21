@@ -145,7 +145,18 @@ git push
 ### 网络不稳怎么办
 
 本机到 `github.com` 的链路是**间歇性**的（同一分钟里有的请求成功、有的被 reset），
-不是配置错。三种判断手段，从便宜到贵：
+不是配置错。
+
+最省事的做法是先跑重试脚本 —— 它只对网络类错误重试（默认 6 次，退避 2/4/6/8/8/8 秒），
+遇到认证或分叉错误立刻停下来告诉你怎么办：
+
+```powershell
+.\scripts\push-retry.cmd              # 重试推 origin 的当前分支
+.\scripts\push-retry.cmd -DryRun      # 只看看有几个 commit 待推
+.\scripts\push-retry.cmd -Attempts 10 # 链路特别差时多试几次
+```
+
+还不行再用下面三种判断手段，从便宜到贵：
 
 ```powershell
 $git = "C:\Program Files\Git\cmd\git.exe"
