@@ -134,7 +134,7 @@ git push
 | `Authentication failed` | 密码填了账号密码，或 PAT 过期 | 重新生成 PAT，权限给 Contents: Read and write |
 | `SEC_E_NO_CREDENTIALS` / `schannel` | 本机 schannel 与代理不兼容 | `git config --local http.sslBackend openssl`；再 `git config --local http.proxy ""` |
 | `OpenSSL SSL_read: Connection reset` | 系统代理（如 `127.0.0.1:7897`）走 HTTPS 会重置 | 同上，清掉 git 的 http.proxy |
-| `Recv failure: Connection was reset` | **不是配置问题**——链路被中间设备重置。GitHub 的 IP 段在国内常被间歇性阻断，同一秒能通、下一秒被 reset | 直接重跑；本次实测重试 1~3 次必成功。连失败 5 次以上再看下面「网络不稳」一节 |
+| `Recv failure: Connection was reset` | 多数情况是 **DNS 给了个坏地址**：TCP 能连上、TLS 握手卡住，git 等 ~21 秒后报 reset | 先 `ipconfig /flushdns`（管理员）再重跑；或直接跑 `scripts\push-retry.cmd`，它每次重试前会自动清 DNS 缓存。详见下面「网络不稳」 |
 | `LF will be replaced by CRLF` | 换行符警告 | 脚本已设 `core.autocrlf false`，可忽略 |
 
 > 本机实测：`Invoke-WebRequest` 与 `curl.exe` 走 schannel 都失败
@@ -145,10 +145,38 @@ git push
 ### 网络不稳怎么办
 
 本机到 `github.com` 的链路是**间歇性**的（同一分钟里有的请求成功、有的被 reset），
-不是配置错。
+不是配置错。本轮把原因定位到了 DNS 层：
+
+#### 先查 DNS（本轮实测的根因）
+
+报 `Recv failure: Connection was reset` / `Failed to connect to github.com` 时，
+先看 `github.com` 解析到了哪个地址：
+
+```powershell
+[System.Net.Dns]::GetHostAddresses('github.com') |
+  Where-Object { $_.AddressFamily -eq 'InterNetwork' } |
+  ForEach-Object { $_.IPAddressToString }
+```
+
+本机的 DNS 服务器（`10.0.8.68`）会在几个地址之间轮换，其中有些地址**能完成 TCP 握手、
+却卡住 TLS 握手**，git 于是在 ~21 秒后报 reset。清除缓存就会换到另一个答案：
+
+```powershell
+ipconfig /flushdns      # 需要管理员权限
+```
+
+实测：清缓存前后同一个 `git ls-remote` 从「21 秒超时失败」变成 1.7 秒成功；
+同一时刻分别对几个候选 IP 做 TLS 握手，有的 200 ms 内完成、有的直接挂到超时。
+`push-retry` 现在每次重试前都会自动清一次缓存，并把新的解析结果打印出来。
+
+两个**不要**试的方向：`git -c http.curloptResolve=...` 在本机 git 2.56.1 上会直接报
+`fatal: Unsupported SSL backend 'openssl'`（实测，带不带 `sslBackend` 都一样）；
+改 hosts 需要管理员记事本，当前会话的沙箱不允许写 `C:\Windows\System32\drivers\etc`。
+
+#### 用重试脚本
 
 最省事的做法是先跑重试脚本 —— 它只对网络类错误重试（默认 6 次，退避 2/4/6/8/8/8 秒），
-遇到认证或分叉错误立刻停下来告诉你怎么办：
+每次重试前清 DNS 缓存，遇到认证或分叉错误立刻停下来告诉你怎么办：
 
 ```powershell
 .\scripts\push-retry.cmd              # 重试推 origin 的当前分支
@@ -156,7 +184,7 @@ git push
 .\scripts\push-retry.cmd -Attempts 10 # 链路特别差时多试几次
 ```
 
-还不行再用下面三种判断手段，从便宜到贵：
+还不行再用下面三种判断手段，从便宜到贵（都是只读探测，不动仓库）：
 
 ```powershell
 $git = "C:\Program Files\Git\cmd\git.exe"

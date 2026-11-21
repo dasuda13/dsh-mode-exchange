@@ -60,6 +60,16 @@
 - `docs/PUBLISH.md` 新增「网络不稳怎么办」：用 `ls-remote` / `-c http.sslBackend=openssl` /
   假凭据 push 三种探针区分「链路瞬断」「TLS 后端」「真的没登录」，并给出换 SSH 通道与
   网页上传两条退路；报错表补 `Recv failure: Connection was reset` 一行。
+- `scripts/push-retry.ps1` 定位到失败的真因并自愈：本机的 DNS 会在几个地址间轮换，
+  其中有些地址能完成 TCP 握手却卡住 TLS 握手，git 于是等 ~21 秒后报
+  `Recv failure: Connection was reset`。脚本现在每次重试前先 `ipconfig /flushdns`
+  再打印新的解析结果（新增 `Get-RemoteHost` / `Get-ResolvedAddress` / `Reset-DnsCache`），
+  清缓存失败时提示需要管理员权限而不是硬报错。
+- `docs/PUBLISH.md` 的「网络不稳怎么办」新增「先查 DNS」小节：怎么查当前解析、
+  `ipconfig /flushdns` 前后 `git ls-remote` 从 21 秒超时变成 1.7 秒成功的实测，
+  以及两个别再试的方向（`http.curloptResolve` 在本机 git 上直接报
+  `Unsupported SSL backend`；hosts 需要管理员记事本，沙箱写不了）。
+  报错表里的 `Recv failure` 一行也从「链路过载」改成 DNS 的解释。
 
 ### 新增
 
