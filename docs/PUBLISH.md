@@ -134,7 +134,7 @@ git push
 | `Authentication failed` | 密码填了账号密码，或 PAT 过期 | 重新生成 PAT，权限给 Contents: Read and write |
 | `SEC_E_NO_CREDENTIALS` / `schannel` | 本机 schannel 与代理不兼容 | `git config --local http.sslBackend openssl`；再 `git config --local http.proxy ""` |
 | `OpenSSL SSL_read: Connection reset` | 系统代理（如 `127.0.0.1:<端口>`）走 HTTPS 会重置 | 同上，清掉 git 的 http.proxy |
-| `Recv failure: Connection was reset` | 多数情况是 **DNS 给了个坏地址**：TCP 能连上、TLS 握手卡住，git 等 ~21 秒后报 reset | 先 `ipconfig /flushdns`（管理员）再重跑；或直接跑 `scripts\push-retry.cmd`，它每次重试前会自动清 DNS 缓存。详见下面「网络不稳」 |
+| `Recv failure: Connection was reset` / `Failed to connect to github.com` | 解析到的 GitHub 边缘节点 **TCP 能连、TLS 握手卡住**（或整个不通），git 等 ~21 秒后报错 | **开代理再跑** `scripts\push-retry.cmd`（它自动发现 `127.0.0.1` 上的代理并让 git 走它）；不行再 `ipconfig /flushdns`。详见下面「网络不稳」 |
 | `LF will be replaced by CRLF` | 换行符警告 | 脚本已设 `core.autocrlf false`，可忽略 |
 
 > 本机实测：`Invoke-WebRequest` 与 `curl.exe` 走 schannel 都失败
@@ -147,31 +147,39 @@ git push
 本机到 `github.com` 的链路是**间歇性**的（同一分钟里有的请求成功、有的被 reset），
 不是配置错。本轮把原因定位到了 DNS 层：
 
-#### 先查 DNS（本轮实测的根因）
+#### 先判断是「地址不对」还是「这条路不通」
 
-报 `Recv failure: Connection was reset` / `Failed to connect to github.com` 时，
-先看 `github.com` 解析到了哪个地址：
+`github.com` 在国内会被解析到好几个不同的 GitHub 边缘节点，逐个握手的结果可能完全不同。
+本轮实测（同一分钟内）：
+
+| 解析到的地址 | 归属 | TLS 握手 |
+|---|---|---|
+| `20.6.7.17` | GitHub 官方网段 `20.6.7.16/28` | ❌ 超时（TCP 能连上） |
+| `20.205.243.166` | GitHub 官方网段 | ✅ 179 ms |
+| `140.82.112.3` | GitHub 官方网段 | ✅ 470 ms |
+
+所以 `Connection was reset` **不是 DNS 投毒**，是到某个边缘节点的链路不通。
+清 DNS 缓存**不一定**能换到好地址 —— 实测连清 6 次，解析结果一直是 `20.6.7.17`。
+
+**最有效的一招是走代理。** 本机 `127.0.0.1:7897`（Clash）实测能让 git 正常访问：
 
 ```powershell
-[System.Net.Dns]::GetHostAddresses('github.com') |
-  Where-Object { $_.AddressFamily -eq 'InterNetwork' } |
-  ForEach-Object { $_.IPAddressToString }
+$git = "C:\Program Files\Git\cmd\git.exe"
+& $git -c http.proxy=http://127.0.0.1:7897 ls-remote --heads origin   # 1 秒返回 SHA 即成功
 ```
 
-本机使用的 DNS 服务器（内网地址，用 `ipconfig /all` 可查）会在几个地址之间轮换，其中有些地址**能完成 TCP 握手、
-却卡住 TLS 握手**，git 于是在 ~21 秒后报 reset。清除缓存就会换到另一个答案：
+验证整条推送链路（用假凭据，收到 `Invalid username or token` 就说明网络全通）：
 
 ```powershell
-ipconfig /flushdns      # 需要管理员权限
+$env:GIT_TERMINAL_PROMPT = "0"
+& $git -c http.proxy=http://127.0.0.1:7897 -c credential.helper= push https://fake-user:fake-token@github.com/dasuda13/dsh-mode-exchange.git main
+$env:GIT_TERMINAL_PROMPT = $null
 ```
-
-实测：清缓存前后同一个 `git ls-remote` 从「21 秒超时失败」变成 1.7 秒成功；
-同一时刻分别对几个候选 IP 做 TLS 握手，有的 200 ms 内完成、有的直接挂到超时。
-`push-retry` 现在每次重试前都会自动清一次缓存，并把新的解析结果打印出来。
 
 两个**不要**试的方向：`git -c http.curloptResolve=...` 在本机 git 2.56.1 上会直接报
-`fatal: Unsupported SSL backend 'openssl'`（实测，带不带 `sslBackend` 都一样）；
-改 hosts 需要管理员记事本，当前会话的沙箱不允许写 `C:\Windows\System32\drivers\etc`。
+`fatal: Unsupported SSL backend 'openssl'`（实测，带不带 `sslBackend` 都一样，而且它和
+`http.proxy` 不能同时用）；改 hosts 需要管理员记事本，当前会话的沙箱不允许写
+`C:\Windows\System32\drivers\etc`。
 
 #### 用重试脚本
 
@@ -179,10 +187,15 @@ ipconfig /flushdns      # 需要管理员权限
 每次重试前清 DNS 缓存，遇到认证或分叉错误立刻停下来告诉你怎么办：
 
 ```powershell
-.\scripts\push-retry.cmd              # 重试推 origin 的当前分支
-.\scripts\push-retry.cmd -DryRun      # 只看看有几个 commit 待推
-.\scripts\push-retry.cmd -Attempts 10 # 链路特别差时多试几次
+.\scripts\push-retry.cmd                  # 自动发现本地代理并重试推送
+.\scripts\push-retry.cmd -DryRun          # 只看看有几个 commit 待推、会用哪个代理
+.\scripts\push-retry.cmd -Proxy http://127.0.0.1:7897   # 指定代理
+.\scripts\push-retry.cmd -NoProxy         # 强制直连
+.\scripts\push-retry.cmd -Attempts 10     # 链路特别差时多试几次
 ```
+
+脚本会依次探测 `7897` / `7890` / `10809` / `10808` / `1080` / `8889` / `8080`，
+找到在监听的就让 git 走它；一个都没有才尝试直连。
 
 还不行再用下面三种判断手段，从便宜到贵（都是只读探测，不动仓库）：
 
@@ -205,6 +218,7 @@ $env:GIT_TERMINAL_PROMPT = $null
 判断结论：
 
 - 1) 成功 / 3) 报 `Invalid username or token` → **网络没问题，直接重跑 `git push`**。
+  若直连不行，给 `git` 加上 `-c http.proxy=http://127.0.0.1:<你的代理端口>` 再试。
   本次实测在 4 分钟里 `push` 失败 1 次、紧接着 5 次假凭据探测全部收到 401，
   说明是链路瞬断，不是仓库或配置问题。
 - 1) `SEC_E_NO_CREDENTIALS` → 是 TLS 后端问题，先 `git config --local http.sslBackend openssl`

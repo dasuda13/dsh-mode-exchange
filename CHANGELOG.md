@@ -70,6 +70,16 @@
   以及两个别再试的方向（`http.curloptResolve` 在本机 git 上直接报
   `Unsupported SSL backend`；hosts 需要管理员记事本，沙箱写不了）。
   报错表里的 `Recv failure` 一行也从「链路过载」改成 DNS 的解释。
+- `scripts/push-retry.ps1` 补上真正管用的那条路：**走本地代理**。实测解析到的
+  GitHub 边缘节点 `20.6.7.17`（确属 GitHub 官方网段 `20.6.7.16/28`）TCP 能连、
+  TLS 握手一直超时，连清 6 次 DNS 缓存都没换地址；而 `127.0.0.1:7897` 的 Clash
+  代理 1 秒内就让 `git ls-remote` 成功。脚本现在依次探测
+  `7897` / `7890` / `10809` / `10808` / `1080` / `8889` / `8080`，找到就自动
+  `-c http.proxy=<代理>` 推送；新增 `-Proxy` 指定与 `-NoProxy` 禁用两个开关，
+  `-DryRun` 会一并打印会用哪个代理。
+- `docs/PUBLISH.md` 的「网络不稳」一节改写成「先判断是地址不对还是这条路不通」：
+  给出三个边缘节点的握手实测对照表、代理验证命令、假凭据探针，并写明
+  `http.curloptResolve` 与 `http.proxy` 不能同时用（会报 `Unsupported SSL backend`）。
 
 ### 新增
 
