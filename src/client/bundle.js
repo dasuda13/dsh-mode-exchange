@@ -89,9 +89,9 @@ const ZH = {
   'switch.revert': '回退到切换前',
   'switch.reverting': '正在回退…',
   'switch.snapshot': '已有切换快照',
-  'switch.snapshotFrom': '切换前模式：{from}',
-  'switch.snapshotTo': '切换后模式：{to}',
-  'switch.snapshotAt': '时间：{at}',
+  'switch.snapshotFrom': '切换前模式',
+  'switch.snapshotTo': '切换后模式',
+  'switch.snapshotAt': '切换时间',
   'switch.denied': '已拒绝的旧模式工具（{count} 个）：{names}',
   'switch.noneDenied': '没有需要拒绝的旧模式工具',
   'switch.selectModeFirst': '请先选择目标模式',
@@ -112,7 +112,7 @@ const ZH = {
   'migrate.running': '迁移进行中…',
   'migrate.confirmTitle': '确认迁移并归档旧会话？',
   'migrate.confirmBody': '即将把会话「{title}」迁移到「{mode}」模式。',
-  'migrate.confirmMessages': '当前消息数：{count}',
+  'migrate.confirmMessages': '当前消息数',
   'migrate.confirmLog': '日志将导出到：{path}',
   'migrate.confirmIrreversible': '归档旧会话后，它不会出现在会话列表中（日志仍在磁盘，可由宿主恢复）。',
   'migrate.confirmBackup': '归档前先备份日志',
@@ -163,6 +163,7 @@ const ZH = {
   'history.result': '结果',
   'history.action': '报告',
   'history.viewReport': '查看报告',
+  'history.statusRunning': '进行中',
   'history.statusInProgress': '进行中',
   'history.statusDone': '已完成',
   'history.statusFailed': '失败',
@@ -272,9 +273,9 @@ const EN = {
   'switch.revert': 'Revert',
   'switch.reverting': 'Reverting…',
   'switch.snapshot': 'Switch snapshot',
-  'switch.snapshotFrom': 'From: {from}',
-  'switch.snapshotTo': 'To: {to}',
-  'switch.snapshotAt': 'At: {at}',
+  'switch.snapshotFrom': 'From mode',
+  'switch.snapshotTo': 'To mode',
+  'switch.snapshotAt': 'Switched at',
   'switch.denied': 'Denied tools from the old mode ({count}): {names}',
   'switch.noneDenied': 'No old-mode tool needed denying',
   'switch.selectModeFirst': 'Pick a target mode first',
@@ -295,7 +296,7 @@ const EN = {
   'migrate.running': 'Migration running…',
   'migrate.confirmTitle': 'Migrate and archive the old session?',
   'migrate.confirmBody': 'Session "{title}" will be migrated to the "{mode}" mode.',
-  'migrate.confirmMessages': 'Current message count: {count}',
+  'migrate.confirmMessages': 'Current message count',
   'migrate.confirmLog': 'Log will be exported to: {path}',
   'migrate.confirmIrreversible': 'Once archived, the old session no longer appears in the list (its log stays on disk and the host can restore it).',
   'migrate.confirmBackup': 'Back up the log before archiving',
@@ -346,6 +347,7 @@ const EN = {
   'history.result': 'Result',
   'history.action': 'Report',
   'history.viewReport': 'View report',
+  'history.statusRunning': 'Running',
   'history.statusInProgress': 'In progress',
   'history.statusDone': 'Done',
   'history.statusFailed': 'Failed',
@@ -1730,6 +1732,7 @@ function stepsOf(t, job) {
 }
 
 function statusLabel(t, status) {
+  if (status === 'running' || status === 'pending') return t('history.statusRunning')
   if (status === 'in-progress') return t('history.statusInProgress')
   if (status === 'done') return t('history.statusDone')
   if (status === 'failed') return t('history.statusFailed')

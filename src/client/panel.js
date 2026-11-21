@@ -25,6 +25,7 @@ function stepsOf(t, job) {
 }
 
 function statusLabel(t, status) {
+  if (status === 'running' || status === 'pending') return t('history.statusRunning')
   if (status === 'in-progress') return t('history.statusInProgress')
   if (status === 'done') return t('history.statusDone')
   if (status === 'failed') return t('history.statusFailed')

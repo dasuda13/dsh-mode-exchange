@@ -88,6 +88,17 @@
 
 ### 新增
 
+- **插件素材与商店信息**：新增 `assets/` —— 图标 PNG（`icon.png` 180×180、
+  `icon-512.png` 512×512，均由 `icon.svg` 的几何重绘在品牌蓝渐变底上）与四张界面截图
+  （模式切换 / 迁移重建 / 迁移历史 / 设置页，由真实组件渲染，非手绘）。
+  新增 `screenshots.json`（四个相对路径，供插件市场按清单取图）。
+  `package.json` 的 `icon` 改为 `./assets/icon.png`：宿主 `iconOf()` 支持
+  SVG / PNG / JPEG / WebP 且上限 256 KiB，而社区插件列表只接受 GitHub 托管的位图；
+  `exports` 保留 `./icon`（现在指向 PNG）并补 `./icon.svg` 以兼容旧引用。
+  `files` 补 `assets` 与 `screenshots.json`，`npm pack` 由 37 文件涨到 44 文件。
+- `README.md` 新增「界面预览」区（图标 + 四张截图的两行表格）与目录结构里的
+  `assets/` / `screenshots.json` 说明。
+
 - **右键菜单也能「迁移重建」**（0.1.7）：之前右键只有软切换，而「没有活着的 Agent」「已归档」
   这类会话恰恰是软切换做不了、只能迁移重建的 —— 用户只能先点进面板、切到「迁移重建」页签、
   选模式、再确认一次。现在会话右键菜单里多了一条「迁移重建」二级菜单，展开就是所有模式，
@@ -174,6 +185,16 @@
 - `scripts/smoke-inject.mjs` / `scripts/smoke-apply.mjs` 的路由数断言同步到 12 条，
   `smoke-inject` 的裸服务名扫描列表补上 `workspaces`。
 ### 修复
+
+- **进度卡的状态徽标显示成英文裸词**：面板 `statusLabel()` 只认 `in-progress`，
+  而宿主 job 状态用的是 `running` / `pending` / `done` / `failed` / `cancelled`，
+  于是迁移进行中时徽标直接渲染成 `running`。现在 `running` 与 `pending` 都映射到
+  新增的 `history.statusRunning`（中文「进行中」/ 英文「Running」）。
+- **四个标签把 i18n 占位符当字面量显示**：`switch.snapshotFrom` / `snapshotTo` /
+  `snapshotAt` / `migrate.confirmMessages` 的值里带 `{from}` `{to}` `{at}` `{count}`，
+  但调用点是把它们当**静态标签**传给 `Field` 的 `label`，界面上直接出现
+  「切换前模式：{from}」。现在这四个键的值改为不含占位符的纯标签，数值仍由
+  `Field` 的 `value` 单独渲染。
 
 - **本地 link 安装的插件在重启后完全加载不起来**（0.1.4）：
   现象是插件管理器里显示「启用中」、组件却「未运行」，侧栏面板、设置页、命令、路由

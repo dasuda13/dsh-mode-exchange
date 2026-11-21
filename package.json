@@ -1,6 +1,6 @@
 {
   "name": "dsh-mode-exchange",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "private": false,
   "license": "MIT",
   "description": "在已存在的 DSH 会话中切换 Agent 模式（软切换），以及按目标模式迁移重建会话（真导入原生消息序列）。",
@@ -25,7 +25,8 @@
     ".": "./index.js",
     "./client": "./src/client/bundle.js",
     "./locale/*.json": "./locale/*.json",
-    "./icon": "./icon.svg"
+    "./icon": "./assets/icon.png",
+    "./icon.svg": "./icon.svg"
   },
   "files": [
     "index.js",
@@ -35,11 +36,13 @@
     "docs",
     "cordis.patch.yml",
     "icon.svg",
+    "assets",
+    "screenshots.json",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
   ],
-  "icon": "./icon.svg",
+  "icon": "./assets/icon.png",
   "scripts": {
     "build": "node scripts/build-client.mjs",
     "check": "node scripts/build-client.mjs --check",

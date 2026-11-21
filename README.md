@@ -46,6 +46,23 @@ DSH 的模式（Standard / PTC / Code / Research …）是会话启动那一刻�
 
 ---
 
+## 界面预览
+
+<img src="assets/icon.png" width="72" height="72" alt="dsh-mode-exchange 图标">
+
+| 模式切换 | 迁移重建 |
+| --- | --- |
+| <img src="assets/screenshot-switch.png" width="300" alt="模式切换页：会话标题、会话选择器、运行时模式切换"> | <img src="assets/screenshot-migrate.png" width="300" alt="迁移重建页：会话与工作区选择器、七步进度"> |
+
+| 迁移历史 | 设置页 |
+| --- | --- |
+| <img src="assets/screenshot-history.png" width="300" alt="迁移历史：已完成 / 失败 / 进行中"> | <img src="assets/screenshot-settings.png" width="460" alt="设置页：默认模式、归档策略、导出目录"> |
+
+> 截图为插件真实组件渲染（含演示数据），不是手绘示意图。
+> 同一组图片也登记在 [screenshots.json](screenshots.json) 里，供插件市场直接取用。
+
+---
+
 ## 功能
 
 ### 能力 A：运行时软切换
@@ -268,7 +285,9 @@ DSH **没有删除会话的 API**：
 ```
 package.json            manifest（dsh.bundle.patch / dsh.client）
 cordis.patch.yml        bundle 挂载行与默认配置
-icon.svg                插件图标
+icon.svg                SVG 图标（源文件，宿主与市场取 PNG）
+assets/                 图标 PNG（180 / 512）与四张界面截图
+screenshots.json        界面截图清单（插件市场按此取图）
 index.js                宿主入口：装配服务、能力探测、注册命令与路由
 src/host/
   config.js             配置 schema 与数据目录布局
