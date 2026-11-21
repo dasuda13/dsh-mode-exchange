@@ -145,13 +145,13 @@ ${body}
       process.exitCode = 1
       return
     }
-    process.stdout.write(`产物是最新的：${target}（${output.length} 字节）\n`)
+    process.stdout.write(`产物是最新的：${target}（${Buffer.byteLength(output, 'utf8')} 字节）\n`)
     return
   }
 
   await mkdir(dirname(target), { recursive: true })
   await writeFile(target, output, 'utf8')
-  process.stdout.write(`已生成 ${target}（${output.length} 字节）\n`)
+  process.stdout.write(`已生成 ${target}（${Buffer.byteLength(output, 'utf8')} 字节）\n`)
   for (const line of produced) process.stdout.write(`  · ${line}\n`)
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "dsh-mode-exchange",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": false,
   "license": "MIT",
   "description": "在已存在的 DSH 会话中切换 Agent 模式（软切换），以及按目标模式迁移重建会话（真导入原生消息序列）。",
