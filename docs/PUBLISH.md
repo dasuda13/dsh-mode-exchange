@@ -255,9 +255,9 @@ $env:GIT_TERMINAL_PROMPT = $null
 ## 方案 C：网页拖拽上传（不装 git、不给 token）
 
 仓库页 → `Add file` → `Upload files` → 把 `src`、`scripts`、`docs`、`locale`、
-`types` 五个文件夹和根目录下的 `index.js`、`package.json`、
-`cordis.patch.yml`、`icon.svg`、`CHANGELOG.md`、`LICENSE`、`README.md`、`.gitignore`
-一起拖进去，填提交信息后 Commit。
+`types`、`assets` 六个文件夹和根目录下的 `index.js`、`package.json`、
+`cordis.patch.yml`、`icon.svg`、`screenshots.json`、`CHANGELOG.md`、`LICENSE`、
+`README.md`、`.gitignore` 一起拖进去，填提交信息后 Commit。
 
 缺点：浏览器上传对隐藏文件（`.gitignore`）和大量文件不友好，最容易漏文件；
 `node_modules` 若被误拖进去会非常大。仅作为兜底。

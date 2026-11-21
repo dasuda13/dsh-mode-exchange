@@ -98,6 +98,10 @@
   `files` 补 `assets` 与 `screenshots.json`，`npm pack` 由 37 文件涨到 44 文件。
 - `README.md` 新增「界面预览」区（图标 + 四张截图的两行表格）与目录结构里的
   `assets/` / `screenshots.json` 说明。
+- `scripts/publish-npm.ps1` 的发布前校验同步：必需文件清单补 `assets/icon.png` 与
+  `screenshots.json`，图标体积检查从只看 `icon.svg` 改成 `icon.svg` 与 `assets/icon.png`
+  两个都查（宿主 `iconOf()` 现在读的是 PNG）。
+- `docs/PUBLISH.md` 的「方案 C 网页拖拽上传」文件清单补 `assets/` 与 `screenshots.json`。
 
 - **右键菜单也能「迁移重建」**（0.1.7）：之前右键只有软切换，而「没有活着的 Agent」「已归档」
   这类会话恰恰是软切换做不了、只能迁移重建的 —— 用户只能先点进面板、切到「迁移重建」页签、

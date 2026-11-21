@@ -184,15 +184,18 @@ $packed = @($packInfo.files | ForEach-Object { $_.path })
 if ($packed.Count -eq 0) { Fail '打包清单为空，检查 package.json 的 files 字段。' }
 Write-Host ('将发布 {0} 个文件，package {1:N1} kB / unpacked {2:N1} kB' -f $packed.Count, ($packInfo.size / 1024), ($packInfo.unpackedSize / 1024))
 
-foreach ($required in @('cordis.patch.yml', 'index.js', 'icon.svg', 'locale/zh.json', 'locale/en.json', 'docs/DETAIL.md', 'docs/DETAIL.en.md', 'src/client/bundle.js', 'types/index.d.ts')) {
+foreach ($required in @('cordis.patch.yml', 'index.js', 'icon.svg', 'locale/zh.json', 'locale/en.json', 'docs/DETAIL.md', 'docs/DETAIL.en.md', 'src/client/bundle.js', 'types/index.d.ts', 'assets/icon.png', 'screenshots.json')) {
     if ($packed -notcontains $required) { Fail '打包清单里缺少 ' + $required + ' —— 检查 package.json 的 files 字段。' }
 }
 
-$iconPath = Join-Path $Root 'icon.svg'
-if (Test-Path $iconPath) {
+# 宿主 iconOf() 读 manifest 的 icon 字段（现在指向 assets/icon.png），上限 256 KiB；
+# icon.svg 保留为源文件，一并做体积检查。
+foreach ($iconRel in @('icon.svg', 'assets/icon.png')) {
+    $iconPath = Join-Path $Root $iconRel
+    if (-not (Test-Path $iconPath)) { Fail "找不到 $iconRel —— 图标素材缺失。" }
     $iconBytes = (Get-Item $iconPath).Length
-    if ($iconBytes -gt 262144) { Fail "icon.svg 为 $iconBytes 字节，超过宿主 256 KiB 上限。" }
-    Write-Host "icon.svg：$iconBytes 字节（上限 262144）"
+    if ($iconBytes -gt 262144) { Fail "$iconRel 为 $iconBytes 字节，超过宿主 256 KiB 上限。" }
+    Write-Host "$iconRel：$iconBytes 字节（上限 262144）"
 }
 
 # ------------------------------------------------------------- 5/6 版本确认
