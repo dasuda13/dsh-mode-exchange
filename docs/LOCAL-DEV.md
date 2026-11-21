@@ -18,8 +18,13 @@
 | Node | 22 及以上（只用来跑本地脚本；插件本体在宿主里跑） |
 | profile | `desktop`（`%USERPROFILE%\.dsh\profiles\desktop`） |
 
-本插件**没有任何 install 脚本、没有构建期依赖**，`dependencies` 里只有宿主本来就有的
-`@deepseek-ai/schemastery`。因此不存在「装完还要 build」的坑。
+本插件**没有任何 install 脚本、没有任何运行时依赖**（`dependencies` 为空，
+源码里只有 `node:*` 内置模块与相对导入）。因此不存在「装完还要 build」的坑，
+也不需要仓库里有 `node_modules` —— 宿主直接 import 本仓库的 `index.js` 即可。
+
+配置 schema 是手写的 standard-schema v1（`Config['~standard'].validate`），
+不依赖 `@deepseek-ai/schemastery`：宿主只认 standard-schema 协议，
+而且本地 link 安装时 Node 按 realpath 解析，够不到 profile 里的那份 schemastery。
 
 ---
 

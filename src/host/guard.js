@@ -11,6 +11,7 @@
  * 设计要点（对应风险 R1）：guard 只在「表里明确记录了该会话」且「名字命中」时才拒绝，
  * 任何异常、任何未登记会话、任何空表都一律放行。
  */
+import { serviceOf } from './services.js'
 
 /** @type {Map<string, Set<string>>} sessionId → 被拒绝的工具名 */
 const denyTable = new Map()
@@ -107,7 +108,9 @@ function judge(execution) {
  */
 export function installGuard(ctx) {
   try {
-    const tools = ctx?.tools ?? ctx?.get?.('tools')
+    // serviceOf 内部同时试 store 与属性访问，并吃掉「without inject」的抛错；
+    // 这里不能写 ctx?.tools —— 属性访问在 Proxy 上会直接抛，?? 右侧根本走不到。
+    const tools = serviceOf(ctx, 'tools')
     if (tools === undefined || typeof tools.guard !== 'function') {
       return () => {}
     }

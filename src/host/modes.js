@@ -4,6 +4,7 @@
  * 硬规则（FR-1）：补全/下拉列表一律来自运行时 `agentPresets.list()`，
  * 任何地方都不得硬编码模式清单（不写 'standard' / 'ptc' 之类的常量）。
  */
+import { serviceOf } from './services.js'
 
 /**
  * 列出全部可用模式。
@@ -12,7 +13,7 @@
  * @returns {Promise<import('../../types/index.d.ts').ModeInfo[]>}
  */
 export async function listModes(ctx) {
-  const presets = ctx?.agentPresets
+  const presets = serviceOf(ctx, 'agentPresets')
   if (presets === undefined || typeof presets.list !== 'function') return []
   let rows
   try {
@@ -72,7 +73,7 @@ export async function resolveMode(ctx, modeId) {
  */
 export async function defaultModeId(ctx) {
   try {
-    const value = ctx?.agentPresets?.defaultId
+    const value = serviceOf(ctx, 'agentPresets')?.defaultId
     if (typeof value === 'string' && value.length > 0) return value
   } catch {
     // 忽略

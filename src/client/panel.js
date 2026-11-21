@@ -5,7 +5,7 @@
 
 import {
   Notice, Field, Select, Toggle, TextArea, Button, PanelHead, StepList,
-  Card, Section, Tabs, Badge, EmptyState, StyleTag,
+  Card, Section, Tabs, Badge, EmptyState, StyleTag, Picker,
   formatTime, formatElapsed, shortSessionId,
 } from './ui.js'
 
@@ -50,9 +50,51 @@ export function makePanel(React, deps) {
     return snapshot
   }
 
+  /**
+   * 宿主客户端侧的会话摘要（sessions.list）。
+   *
+   * 面板要显示「和左侧会话列表一模一样的名字」，而宿主客户端早就把这件事做完了：
+   * `SessionSummary.displayTitle` 的回退链是 durable title → 项目目录名 → id。
+   * 直接读它，比从宿主侧绕一圈更准，也不会因为标题服务缺失而退化成裸 id。
+   */
+  function useSessionTitles() {
+    const read = () => {
+      try {
+        const sessions = deps.ctx && typeof deps.ctx.get === 'function' ? deps.ctx.get('sessions') : null
+        const snapshot = sessions && sessions.list ? sessions.list.getSnapshot() : null
+        return (snapshot && snapshot.byId) || {}
+      } catch {
+        return {}
+      }
+    }
+    const [byId, setById] = React.useState(read)
+    React.useEffect(() => {
+      let sessions = null
+      try {
+        sessions = deps.ctx && typeof deps.ctx.get === 'function' ? deps.ctx.get('sessions') : null
+      } catch {
+        sessions = null
+      }
+      if (!sessions || !sessions.list || typeof sessions.list.subscribe !== 'function') return undefined
+      const sync = () => setById(read())
+      sync()
+      const dispose = sessions.list.subscribe(sync)
+      return () => { if (typeof dispose === 'function') dispose() }
+    }, [])
+    return byId
+  }
+
   function Panel(props) {
     const state = useStore()
-    const sessionId = props.sessionId || state.sessionId
+    const sessionTitles = useSessionTitles()
+    // 面板默认跟随宿主主视图的会话；用户在「选择会话」里挑过之后，以他的选择为准。
+    const [pickedSessionId, setPickedSessionId] = React.useState('')
+    const [workspaceId, setWorkspaceId] = React.useState('')
+    // 用户手动挑过工作区之后就不再跟着会话走，否则每次都把他选的覆盖掉。
+    const [workspaceTouched, setWorkspaceTouched] = React.useState(false)
+    const [openPicker, setOpenPicker] = React.useState('')
+    const mainViewRef = React.useRef(props.sessionId || null)
+    const sessionId = pickedSessionId || props.sessionId || state.sessionId
     const [tab, setTab] = React.useState('switch')
     const [target, setTarget] = React.useState('')
     const [busy, setBusy] = React.useState('')
@@ -87,6 +129,7 @@ export function makePanel(React, deps) {
           if (cancelled) return
           store.settle({
             sessionId: value.sessionId,
+            title: value.title ?? null,
             currentMode: value.currentMode,
             switchable: value.switchable,
             blockedReason: value.blockedReason,
@@ -103,6 +146,66 @@ export function makePanel(React, deps) {
       return () => { cancelled = true }
     }, [sessionId])
 
+    // 会话清单 / 工作区清单：面板要让人按「标题」认会话，而不是一串 session- 编码。
+    // 这两份数据只在打开面板时拉一次；切换或迁移会话时不需要实时同步宿主。
+    React.useEffect(() => {
+      let cancelled = false
+      api.listSessions()
+        .then(value => { if (!cancelled) store.set({ sessions: (value && value.items) || [] }) })
+        .catch(() => { if (!cancelled) store.set({ sessions: [] }) })
+      api.listWorkspaces()
+        .then(value => { if (!cancelled) store.set({ workspaces: (value && value.items) || [] }) })
+        .catch(() => { if (!cancelled) store.set({ workspaces: [] }) })
+      return () => { cancelled = true }
+    }, [])
+
+    // 首次拿到清单后定默认值：优先「用户上次点进来的会话」（就是 props 给的那个），
+    // 其次清单里的第一个；工作区跟着这个会话走。用户手动选过就不再覆盖。
+    React.useEffect(() => {
+      const sessions = state.sessions || []
+      if (sessions.length === 0) return
+      if (pickedSessionId) return
+      const known = props.sessionId || state.sessionId
+      if (known) return
+      // 宿主没给主视图会话时才退回清单第一个；给了就以它为准，不要把人从当前对话上挪走。
+      const first = sessions[0]
+      if (first && first.id) setPickedSessionId(first.id)
+    }, [state.sessions])
+
+    // 用户在左侧会话列表里换了对话：面板要跟着回到那个会话，清掉手动选择，
+    // 否则「我在左边点了 A，面板还停在刚才手选的 B」会让人以为点错了。
+    React.useEffect(() => {
+      const next = props.sessionId || null
+      if (mainViewRef.current === next) return
+      mainViewRef.current = next
+      setPickedSessionId('')
+      setWorkspaceTouched(false)
+    }, [props.sessionId])
+
+    // 工作区默认跟着「要操作的会话」走；会话没有归属或还没选中时才退回第一个工作区。
+    React.useEffect(() => {
+      if (workspaceTouched) return
+      const workspaces = state.workspaces || []
+      if (workspaces.length === 0) return
+      const sessions = state.sessions || []
+      const current = sessions.find(item => item.id === sessionId)
+      const fromSession = current && current.workspaceId
+      const next = fromSession || (workspaces[0] && workspaces[0].id) || ''
+      if (next && next !== workspaceId) setWorkspaceId(next)
+    }, [state.workspaces, state.sessions, sessionId, workspaceTouched])
+
+    // 换会话时清掉上一个会话的切换/迁移结果，避免把旧结论套到新会话上。
+    React.useEffect(() => {
+      setTarget('')
+      setMigrateMode('')
+      setJob(null)
+      setReport(null)
+      setResume(null)
+      setConfirming(null)
+      setInfo('')
+      setError('')
+    }, [sessionId])
+
     // 用配置默认值填表单（只在首次或配置变化且用户没改过时）。
     React.useEffect(() => {
       const config = state.config || {}
@@ -111,7 +214,7 @@ export function makePanel(React, deps) {
       setMigrateMode(previous => previous || fallback)
       if (typeof config.deleteOldSession === 'boolean') setDeleteOld(config.deleteOldSession)
       if (typeof config.enableTeam === 'boolean') setTeam(config.enableTeam && state.capabilities && state.capabilities.teamSwitch === true)
-    }, [state.config, state.currentMode, state.capabilities])
+    }, [state.config, state.currentMode, state.capabilities, sessionId])
 
     // 任务轮询：运行中每 800ms 读一次状态，同时更新耗时。
     React.useEffect(() => {
@@ -136,7 +239,95 @@ export function makePanel(React, deps) {
       return () => { stopped = true; clearInterval(timer) }
     }, [job && job.jobId, job && job.status])
 
+    // 右键菜单发起的迁移只往 store 写一个 jobId，没有组件能直接 setJob；
+    // 面板接管它，这样「从菜单发起 → 打开面板看进度」看的是同一个任务。
+    // 菜单可能是在别的会话上发起的，所以先把选择器切到那条会话，再接管任务。
+    React.useEffect(() => {
+      const pendingJob = state.job
+      if (!pendingJob) return
+      const owner = state.jobSessionId
+      if (owner && owner !== sessionId) { setPickedSessionId(owner); return }
+      if (job && job.jobId === pendingJob) return
+      setJob({ jobId: pendingJob, status: 'running', stepIndex: 0, stepName: t('steps.export.name'), totalSteps: 7 })
+      setElapsed(0)
+      setTab('migrate')
+    }, [state.job, state.jobSessionId, job && job.jobId, sessionId])
+
+    // 任务收尾后把 store 里的「待接管」标记清掉，避免下次打开面板又接管一遍。
+    React.useEffect(() => {
+      if (!state.job || !job || job.jobId !== state.job) return
+      if (job.status === 'running' || job.status === 'pending') return
+      store.set({ job: null, jobSessionId: null })
+    }, [state.job, job && job.jobId, job && job.status])
+
     const canSwitch = state.switchable !== false && !state.blockedReason
+
+    // ---- 会话 / 工作区选择器 ----------------------------------------------
+    // 会话只显示「标题 + 所属工作区」，让它能被人认出来；短 id 退到副行做兜底。
+    const sessions = state.sessions || []
+    const workspaces = state.workspaces || []
+    const workspaceName = id => {
+      const hit = workspaces.find(item => item.id === id)
+      return hit ? hit.title : ''
+    }
+    const sessionBrief = sessions.find(item => item.id === sessionId)
+    // 标题优先级：宿主客户端 displayTitle（与左侧列表一致）→ 宿主侧标题 → 清单里的标题。
+    const titleOf = id => {
+      if (!id) return ''
+      const row = sessionTitles[id] || sessionTitles[String(id)]
+      if (row && typeof row.displayTitle === 'string' && row.displayTitle.length > 0) return row.displayTitle
+      const brief = sessions.find(item => item.id === id)
+      return (brief && brief.title) || ''
+    }
+    const sessionTitle = titleOf(sessionId) || state.title || t('picker.noTitle')
+    const sessionMeta = item => {
+      const parts = []
+      const space = item.workspaceId ? workspaceName(item.workspaceId) : ''
+      if (space) parts.push(space)
+      parts.push(shortSessionId(item.id))
+      if (item.running) parts.push(t('picker.running'))
+      else if (item.archived) parts.push(t('picker.archived'))
+      return parts.join(' · ')
+    }
+    const sessionOptions = sessions.map(item => ({
+      value: item.id,
+      label: titleOf(item.id) || item.title || t('picker.noTitle'),
+      meta: sessionMeta(item),
+      title: item.cwd || item.id,
+    }))
+    const workspaceOptions = workspaces.map(item => ({
+      value: item.id,
+      label: item.title || item.path || item.id,
+      meta: item.path,
+      title: item.path,
+    }))
+    const selectedWorkspace = workspaces.find(item => item.id === workspaceId)
+    const sessionPicker = h(Picker, {
+      label: t('picker.sessionLabel'),
+      value: sessionId || '',
+      valueLabel: sessionId ? sessionTitle : '',
+      options: sessionOptions,
+      open: openPicker === 'session',
+      onOpenChange: next => setOpenPicker(next ? 'session' : ''),
+      // 换会话时让工作区重新跟随新会话（用户没手动选过工作区的话），
+      // 否则会出现「切到 B 会话、工作区还停在 A 的」这种错位。
+      onChange: next => { setPickedSessionId(next); setWorkspaceTouched(false); setOpenPicker('') },
+      empty: t('picker.noSessions'),
+      hint: t('picker.sessionHint'),
+      disabled: busy !== '',
+    })
+    const workspacePicker = h(Picker, {
+      label: t('picker.workspaceLabel'),
+      value: workspaceId || '',
+      valueLabel: selectedWorkspace ? (selectedWorkspace.title || selectedWorkspace.path) : '',
+      options: workspaceOptions,
+      open: openPicker === 'workspace',
+      onOpenChange: next => setOpenPicker(next ? 'workspace' : ''),
+      onChange: next => { setWorkspaceId(next); setWorkspaceTouched(true); setOpenPicker('') },
+      empty: t('picker.noWorkspaces'),
+      hint: t('picker.workspaceHint'),
+      disabled: busy !== '',
+    })
 
     async function applySwitch() {
       if (!target) { setError(t('switch.selectModeFirst')); return }
@@ -188,6 +379,7 @@ export function makePanel(React, deps) {
       try {
         const request = {
           sessionId,
+          workspaceId: workspaceId || undefined,
           mode: migrateMode,
           deleteOld: deleteOld === true,
           team: team === true,
@@ -287,7 +479,8 @@ export function makePanel(React, deps) {
           : h(Badge, { tone: 'warn' }, t('session.notSwitchable')),
       ),
       h('div', { className: 'dsh-me-stack-sm' },
-        h(Field, { label: t('session.current'), value: shortSessionId(sessionId), mono: true }),
+        h(Field, { label: t('session.current'), value: sessionId ? sessionTitle : t('session.modeFallback') }),
+        h(Field, { label: t('session.id'), value: shortSessionId(sessionId), mono: true }),
         h(Field, { label: t('session.mode'), value: state.currentMode || t('session.modeFallback'), mono: true }),
       ),
       canSwitch || !state.blockedReason
@@ -297,6 +490,7 @@ export function makePanel(React, deps) {
 
     const switchTab = h('div', { className: 'dsh-me-stack' },
       statusCard,
+      h(Section, { title: t('picker.session') }, h(Card, null, sessionPicker)),
       h(Notice, { kind: 'warn' }, t('switch.softNotice')),
       h(Section, { title: t('switch.heading') },
         h(Card, null,
@@ -345,6 +539,9 @@ export function makePanel(React, deps) {
 
     const migrateTab = h('div', { className: 'dsh-me-stack' },
       h(Notice, null, t('migrate.intro')),
+      h(Section, { title: t('picker.session') },
+        h(Card, null, sessionPicker, h('hr', { className: 'dsh-me-divider' }), workspacePicker),
+      ),
       h(Section, { title: t('migrate.heading') },
         h(Card, null,
           h(Select, {
@@ -435,7 +632,7 @@ export function makePanel(React, deps) {
           h(Badge, { tone: 'warn' }, '⚠'),
         ),
         h('p', { className: 'dsh-me-hint' }, t('migrate.confirmBody', {
-          title: state.title || shortSessionId(sessionId),
+          title: sessionTitle,
           mode: confirming.mode,
         })),
         messageCount !== undefined
@@ -462,9 +659,14 @@ export function makePanel(React, deps) {
             oldSession.archived ? t('migrate.oldArchived') : t('migrate.oldKept')),
         ),
         h('div', { className: 'dsh-me-stack-sm' },
-          value.source ? h(Field, { label: t('migrate.source'), value: shortSessionId(value.source.sessionId), mono: true }) : null,
+          value.source ? h(Field, { label: t('migrate.source'), value: value.source.title || shortSessionId(value.source.sessionId) }) : null,
           value.target ? h(Field, { label: t('migrate.target2'), value: shortSessionId(value.target.sessionId), mono: true }) : null,
           value.source ? h(Field, { label: t('migrate.messageCount'), value: String(value.source.messageCount) }) : null,
+          value.target ? h(Field, {
+            label: t('migrate.targetWorkspace'),
+            value: value.target.workspaceTitle
+              || (value.target.attachedToWorkspace ? t('migrate.targetWorkspaceAuto') : t('migrate.targetWorkspaceNone')),
+          }) : null,
           h(Field, { label: t('migrate.teamEnabled'), value: teamInfo.enabled ? t('migrate.teamOn') : t('migrate.teamOff') }),
           log.path ? h(Field, { label: t('migrate.logPath'), value: log.path, mono: true }) : null,
           oldSession.backupPath ? h(Field, { label: t('migrate.backupPath'), value: oldSession.backupPath, mono: true }) : null,

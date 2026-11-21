@@ -1,6 +1,5 @@
 // 宿主纯逻辑冒烟：util / config / ledger（不依赖任何 ctx 服务）。
 // 用法：node scripts/smoke-host.mjs
-import './schemastery-register.mjs'
 import { mkdtemp, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

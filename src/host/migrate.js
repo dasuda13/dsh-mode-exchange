@@ -37,7 +37,8 @@ import {
   verifyExport,
 } from './export.js'
 import { resolveMode } from './modes.js'
-import { liveAgent, sessionCwd, sessionHeader, sessionTitleOf } from './services.js'
+import { liveAgent, serviceOf, sessionCwd, sessionHeader, sessionTitleOf } from './services.js'
+import { workspaceTargetOf } from './roster.js'
 
 /** 进行中的任务（只在内存；台账在磁盘）。 */
 const jobs = new Map()
@@ -52,6 +53,7 @@ const jobs = new Map()
  *   deleteOld: boolean,
  *   team: boolean,
  *   note?: string,
+ *   workspaceId?: string,
  *   config: import('../../types/index.d.ts').ModeExchangeConfig,
  *   capabilities: import('../../types/index.d.ts').Capabilities,
  *   force?: boolean,
@@ -74,7 +76,11 @@ export async function startMigration(ctx, input) {
   const resolved = await resolveMode(ctx, mode)
   if (!resolved.ok) return { ok: false, reason: resolved.reason }
 
-  const cwd = await sessionCwd(ctx, sessionId)
+  // 目标工作区：面板可以显式指定新会话落在哪个工作区；不指定就沿用源会话的 cwd。
+  // 这里只做「解析出目标目录」，真正挂载在 ⑥ 之前（attachToWorkspace）执行。
+  const workspaceId = typeof input.workspaceId === 'string' && input.workspaceId.length > 0 ? input.workspaceId : undefined
+  const workspaceTarget = workspaceId === undefined ? undefined : await workspaceTargetOf(ctx, workspaceId)
+  const cwd = workspaceTarget?.path ?? await sessionCwd(ctx, sessionId)
   const dirs = layout(dataRoot(input.config, cwd))
 
   const existing = await ledger.read(dirs, sessionId)
@@ -123,6 +129,8 @@ export async function startMigration(ctx, input) {
     sessionId,
     header,
     cwd,
+    workspaceId: workspaceTarget?.id,
+    workspaceTitle: workspaceTarget?.title,
     mode: resolved.mode,
     deleteOld: input.deleteOld === true,
     team: input.team === true,
@@ -291,6 +299,9 @@ async function runJob(ctx, job) {
       imported: false,
       importedEventCount: 0,
       attachedToWorkspace: false,
+      // 面板选了工作区才记；没选时这段保持缺省，报告与 0.1.4 完全一致。
+      ...(typeof job.workspaceId === 'string' ? { workspaceId: job.workspaceId } : {}),
+      ...(typeof job.workspaceTitle === 'string' ? { workspaceTitle: job.workspaceTitle } : {}),
     }
 
     const createResult = await createWithHistory(ctx, {
@@ -325,7 +336,11 @@ async function runJob(ctx, job) {
       )
       throw new Error(`导入复核失败：${imported.reason}`)
     }
-    mark('④ 导入日志为历史上下文', true, `${imported.eventCount} 条原生事件已落盘`)
+    mark(
+      '④ 导入日志为历史上下文',
+      true,
+      `${imported.eventCount} 条原生事件已落盘${imported.location === undefined ? '' : `（${imported.location}）`}`,
+    )
 
     // 来源标记 + 备注（FR-12 / FR-7 的 --note）
     await appendProvenance(ctx, {
@@ -338,10 +353,22 @@ async function runJob(ctx, job) {
     })
     await ledger.write(dirs, { sourceSessionId: sessionId, step: 4 })
 
-    // 挂工作区（FR-8 未强制，但新会话要能被侧栏按工作区分组看到）
-    const attached = await attachToWorkspace(ctx, targetSessionId, cwd)
+    // 挂工作区（FR-8 未强制，但新会话要能被侧栏按工作区分组看到）。
+    // 二次兜底：挂工作区只是锦上添花，任何意外都不该把整次迁移判失败。
+    let attached = false
+    try {
+      attached = await attachToWorkspace(ctx, targetSessionId, cwd, job.workspaceId)
+    } catch {
+      attached = false
+    }
     report.target.attachedToWorkspace = attached
-    mark('  挂载工作区', attached, attached ? '已加入工作区列表' : '未能匹配到工作区（不影响迁移）')
+    mark(
+      '  挂载工作区',
+      attached,
+      attached
+        ? `已加入工作区${typeof job.workspaceTitle === 'string' ? `「${job.workspaceTitle}」` : '列表'}`
+        : '未能匹配到工作区（不影响迁移）',
+    )
 
     // ---------------------------------------------------------------- ⑤ 团队
     step(4, ledger.stepLabel(4))
@@ -353,7 +380,13 @@ async function runJob(ctx, job) {
       report.team.reason = '运行时不支持程序化启停团队协作（未找到 agentTeams.setEnabled）。'
       mark('⑤ 启用智能体团队协作', false, report.team.reason)
     } else {
-      const enabled = await enableTeam(ctx, targetSessionId)
+      /** @type {{ ok: boolean, reason?: string }} */
+      let enabled
+      try {
+        enabled = await enableTeam(ctx, targetSessionId)
+      } catch (error) {
+        enabled = { ok: false, reason: error instanceof Error ? error.message : String(error) }
+      }
       report.team.enabled = enabled.ok
       if (!enabled.ok) report.team.reason = enabled.reason
       mark('⑤ 启用智能体团队协作', enabled.ok, enabled.ok ? '已启用' : enabled.reason)
@@ -369,7 +402,13 @@ async function runJob(ctx, job) {
     } else {
       const backupPath = await backupSession(ctx, { sessionId, dirs }).catch(() => undefined)
       if (backupPath !== undefined) report.oldSession.backupPath = backupPath
-      const archived = await scheduleArchive(ctx, sessionId)
+      /** @type {{ ok: boolean, reason?: string }} */
+      let archived
+      try {
+        archived = await scheduleArchive(ctx, sessionId)
+      } catch (error) {
+        archived = { ok: false, reason: error instanceof Error ? error.message : String(error) }
+      }
       report.oldSession.archived = archived.ok
       if (!archived.ok) report.oldSession.reason = archived.reason
       mark('⑥ 处置旧会话', archived.ok, archived.ok ? `已归档（备份 ${backupPath ?? '无'}）` : archived.reason)
@@ -441,11 +480,11 @@ function srcLabel(sessionId) {
  * @returns {Promise<{ ok: true, agent: any } | { ok: false, reason: string }>}
  */
 async function createWithHistory(ctx, input) {
-  const agents = ctx?.agents
+  const agents = serviceOf(ctx, 'agents')
   if (agents === undefined || typeof agents.create !== 'function') {
     return { ok: false, reason: '运行时不提供 agents.create，无法带着历史创建会话。' }
   }
-  const presets = ctx?.agentPresets
+  const presets = serviceOf(ctx, 'agentPresets')
   if (presets === undefined || typeof presets.mount !== 'function') {
     return { ok: false, reason: '运行时不提供 agentPresets.mount，无法在 setup 中装配目标模式。' }
   }
@@ -481,7 +520,7 @@ async function createWithHistory(ctx, input) {
  */
 function readAgentOptions(ctx) {
   try {
-    const model = ctx?.get?.('agentDefaultModel') ?? ctx?.agentDefaultModel
+    const model = serviceOf(ctx, 'agentDefaultModel')
     const selection = model?.currentSelection?.()
     if (selection !== null && typeof selection === 'object'
       && typeof selection.provider === 'string' && typeof selection.model === 'string') {
@@ -498,43 +537,90 @@ function readAgentOptions(ctx) {
 }
 
 /**
+ * 从持久层读一次新会话的事件条数。
+ *
+ * 宿主 jsonl 后端是「惰性物化」的：`persistence.create()` 只在内存里登记，
+ * 真正的文件在第一次 append/flush 时才出现。若读取时命中的是尚未物化的句柄，
+ * 句柄会回 `{ eventState: 'detached', events: [] }` —— 这时条数为 0 不代表导入失败，
+ * 而是「还没落盘」，必须稍后重试而不是立刻判死。
+ *
+ * @param {{ open: Function }} persistence
+ * @param {string} sessionId
+ * @returns {Promise<{ eventCount: number, detached: boolean }>}
+ */
+async function readPersistedEvents(persistence, sessionId) {
+  const handle = await persistence.open(sessionId, 'read')
+  try {
+    const chunk = await handle.read()
+    const events = Array.isArray(chunk) ? chunk : (Array.isArray(chunk?.events) ? chunk.events : [])
+    let materialized = chunk?.eventState !== 'detached'
+    let location
+    if (typeof persistence.stat === 'function') {
+      // stat 对「已登记但未物化」的会话不给 location/sizeBytes，可据此区分真假落盘；
+      // 顺带把落盘路径记进报告，出问题时能直接照着路径去查。
+      try {
+        const meta = await persistence.stat(sessionId)
+        if (meta !== undefined && meta !== null) {
+          if (meta.location !== undefined || (typeof meta.sizeBytes === 'number' && meta.sizeBytes > 0)) {
+            materialized = true
+          }
+          if (typeof meta.location?.path === 'string') location = meta.location.path
+        }
+      } catch {
+        // stat 失败时维持 detached 判断
+      }
+    }
+    return { eventCount: events.length, detached: !materialized, location }
+  } finally {
+    try {
+      await handle.close()
+    } catch {
+      // 句柄关闭失败不影响复核结论
+    }
+  }
+}
+
+/**
  * 复核导入结果：从持久层读回新会话，比对事件条数。
+ *
+ * 两条曾经的坑（0.1.3 修）：
+ *   ① 没有持久层时返回 ok:true 的「假成功」——报告会谎称 1865 条已落盘；
+ *   ② 宿主惰性物化导致的 detached 句柄被判成「落盘 0 条」，
+ *      于是明明会成功的迁移在慢盘上偶发失败。现在改成重试 3 次再下结论。
+ *
  * @param {any} ctx
  * @param {{ sessionId: string, expectedEventCount: number }} input
  * @returns {Promise<{ ok: boolean, eventCount: number, reason?: string }>}
  */
 async function verifyImport(ctx, input) {
-  try {
-    const persistence = ctx?.sessionPersistence
-    if (persistence === undefined || typeof persistence.open !== 'function') {
-      return { ok: true, eventCount: input.expectedEventCount, reason: '没有持久层可复核，按调用成功处理。' }
-    }
-    const handle = await persistence.open(input.sessionId, 'read')
-    try {
-      const chunk = await handle.read()
-      const events = Array.isArray(chunk) ? chunk : (Array.isArray(chunk?.events) ? chunk.events : [])
-      if (events.length < input.expectedEventCount) {
-        return {
-          ok: false,
-          eventCount: events.length,
-          reason: `落盘事件数 ${events.length} 少于 seed 的 ${input.expectedEventCount} 条。`,
-        }
-      }
-      return { ok: true, eventCount: events.length }
-    } finally {
-      try {
-        handle.close()
-      } catch {
-        // 忽略
-      }
-    }
-  } catch (error) {
+  const persistence = serviceOf(ctx, 'sessionPersistence')
+  if (persistence === undefined || typeof persistence.open !== 'function') {
     return {
       ok: false,
       eventCount: 0,
-      reason: error instanceof Error ? error.message : String(error),
+      reason: '运行时没有 sessionPersistence.open，无法确认新会话是否真的落盘；为避免报告假成功，这里按未通过处理。',
     }
   }
+
+  let eventCount = 0
+  let reason = '尚未读到新会话事件。'
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (attempt > 0) await yieldToLoop(150)
+    try {
+      const seen = await readPersistedEvents(persistence, input.sessionId)
+      eventCount = seen.eventCount
+      if (seen.eventCount >= input.expectedEventCount) {
+        return { ok: true, eventCount: seen.eventCount, location: seen.location }
+      }
+      reason = seen.detached
+        ? `新会话尚未物化（宿主把首次落盘推迟到后续写入），当前读回 ${seen.eventCount} 条，期望 ${input.expectedEventCount} 条。`
+        : `落盘事件数 ${seen.eventCount} 少于 seed 的 ${input.expectedEventCount} 条。`
+    } catch (error) {
+      eventCount = 0
+      reason = error instanceof Error ? error.message : String(error)
+    }
+  }
+  return { ok: false, eventCount, reason }
 }
 
 /**
@@ -586,16 +672,36 @@ async function appendProvenance(ctx, input) {
 }
 
 /**
- * 把新会话挂到它 cwd 对应的 workspace 上。
+ * 把新会话挂到工作区上。
+ *
+ * 两种情况：
+ *   · 面板指定了 workspaceId → 按 id 精确挂载（用户选了哪个就落哪个）；
+ *   · 没指定 → 退回按 cwd 猜（与 0.1.4 行为一致）。
+ *
  * @param {any} ctx
  * @param {string} sessionId
  * @param {string | undefined} cwd
+ * @param {string | undefined} workspaceId
  * @returns {Promise<boolean>}
  */
-async function attachToWorkspace(ctx, sessionId, cwd) {
-  if (typeof cwd !== 'string' || cwd.length === 0) return false
-  const registry = ctx?.workspaceRegistry
+async function attachToWorkspace(ctx, sessionId, cwd, workspaceId) {
+  // serviceOf 自带 try/catch：workspaceRegistry 不在本插件 inject 里，
+  // 直接写 ctx?.workspaceRegistry 会被 Cordis 的注入检查抛错。
+  const registry = serviceOf(ctx, 'workspaceRegistry')
   if (registry === undefined) return false
+  // ① 面板显式指定了工作区 —— 优先按 id 精确挂载（用户在哪里选就落在哪里）。
+  if (typeof workspaceId === 'string' && workspaceId.length > 0) {
+    try {
+      const target = typeof registry.get === 'function' ? await registry.get(workspaceId) : undefined
+      if (target !== undefined && typeof target.attachSession === 'function') {
+        await target.attachSession(sessionId)
+        return true
+      }
+    } catch {
+      // 精确挂载失败时退回按 cwd 猜
+    }
+  }
+  if (typeof cwd !== 'string' || cwd.length === 0) return false
   try {
     if (typeof registry.resolveByPath === 'function') {
       const workspace = await registry.resolveByPath(cwd)
@@ -629,7 +735,7 @@ async function attachToWorkspace(ctx, sessionId, cwd) {
  * @returns {Promise<{ ok: boolean, reason?: string }>}
  */
 async function enableTeam(ctx, sessionId) {
-  const teams = ctx?.agentTeams
+  const teams = serviceOf(ctx, 'agentTeams')
   if (teams === undefined || typeof teams.setEnabled !== 'function') {
     return { ok: false, reason: '运行时不支持程序化启停团队协作。' }
   }
@@ -659,7 +765,7 @@ async function enableTeam(ctx, sessionId) {
  * @returns {Promise<{ ok: boolean, reason?: string }>}
  */
 async function scheduleArchive(ctx, sessionId) {
-  const registry = ctx?.workspaceRegistry
+  const registry = serviceOf(ctx, 'workspaceRegistry')
   if (registry === undefined || typeof registry.archiveSession !== 'function') {
     return { ok: false, reason: '运行时不提供 workspaceRegistry.archiveSession，无法归档。' }
   }

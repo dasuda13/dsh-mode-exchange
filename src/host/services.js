@@ -24,6 +24,7 @@ const OPTIONAL = [
   'workingDirectory',
   'userQuestions',
   'sessions',
+  'workspaces',
 ]
 
 /**
@@ -95,8 +96,23 @@ export function resolveServices(ctx) {
   return { services, missing }
 }
 
-/** 探测结果缓存：同一进程内只探一次（服务是稳定引用）。 */
+/**
+ * 探测结果缓存：per-ctx 只保留「正向」结果。
+ *
+ * 为什么不再缓存全量结果：apply 时 tools / agentTeams / workspaceRegistry 可能还没就绪，
+ * 那时探到的 false 会被永久记住，之后服务就绪也一直走降级路径。所以这里只缓存
+ * 「五项全真」的结果（服务稳定、之后不会变差）；否则每次都重探。
+ */
 const capabilityCache = new WeakMap()
+
+/** @param {{ seedCreate: boolean, scopedRestrict: boolean, scopedPrompt: boolean, teamSwitch: boolean, attachSession: boolean }} capabilities */
+function allCapable(capabilities) {
+  return capabilities.seedCreate
+    && capabilities.scopedRestrict
+    && capabilities.scopedPrompt
+    && capabilities.teamSwitch
+    && capabilities.attachSession
+}
 
 /**
  * 探测运行时能力。
@@ -139,7 +155,7 @@ export function probeCapabilities(ctx, resolved) {
   if (!attachSession) notes.push('缺少 workspaceRegistry 查询能力，迁移出的新会话可能不出现在会话列表中。')
 
   const capabilities = { seedCreate, scopedRestrict, scopedPrompt, teamSwitch, attachSession, notes }
-  capabilityCache.set(ctx, capabilities)
+  if (allCapable(capabilities)) capabilityCache.set(ctx, capabilities)
   return capabilities
 }
 
@@ -209,6 +225,11 @@ export function isArchived(ctx, sessionId) {
 
 /**
  * 读会话标题（失败返回 undefined）。
+ *
+ * 宿主 API 的坑（0.1.4 之前这里恒返回 undefined，面板只能显示裸 id）：
+ *   `sessionTitle.get(session)` 要的是 **Session 实例**，不是 sessionId。
+ * 所以先 `sessions.get(sessionId)` 取实例，再读标题；宿主换了实现也能兼容。
+ *
  * @param {any} ctx
  * @param {string} sessionId
  * @returns {Promise<string | undefined>}
@@ -216,9 +237,21 @@ export function isArchived(ctx, sessionId) {
 export async function sessionTitleOf(ctx, sessionId) {
   const titles = take(ctx, 'sessionTitle')
   if (titles === undefined || typeof titles.get !== 'function') return undefined
+  const sessions = take(ctx, 'sessions')
+  let session
   try {
-    const value = await titles.get(sessionId)
+    session = sessions !== undefined && typeof sessions.get === 'function' ? sessions.get(sessionId) : undefined
+  } catch {
+    session = undefined
+  }
+  if (session === undefined) return undefined
+  try {
+    // get() 是同步的；await 兼容「返回 Promise」的旧实现。
+    const value = await titles.get(session)
     if (typeof value === 'string' && value.length > 0) return value
+    if (value !== null && typeof value === 'object' && typeof value.title === 'string' && value.title.length > 0) {
+      return value.title
+    }
     return undefined
   } catch {
     return undefined

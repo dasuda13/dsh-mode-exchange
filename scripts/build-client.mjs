@@ -23,7 +23,7 @@ const clientDir = join(root, 'src', 'client')
 const pkgPath = join(root, 'package.json')
 
 /** 打包顺序 = 依赖拓扑顺序：被依赖者在前。 */
-const ORDER = ['i18n.js', 'ui.js', 'api.js', 'store.js', 'panel.js', 'settings.js', 'entry.js']
+const ORDER = ['i18n.js', 'ui.js', 'api.js', 'store.js', 'panel.js', 'settings.js', 'menu.js', 'entry.js']
 
 /** 每个模块导出的入口函数名（产物最后要调用它）。 */
 const ENTRY_EXPORT = 'startModeExchangeClient'

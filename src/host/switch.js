@@ -80,8 +80,8 @@ export async function checkSwitchable(ctx, sessionId) {
  */
 export async function toolsetOfMode(ctx, modeId) {
   const empty = { names: new Set(), definitions: new Map() }
-  const presets = ctx?.agentPresets
-  const tools = ctx?.tools
+  const presets = serviceOf(ctx, 'agentPresets')
+  const tools = serviceOf(ctx, 'tools')
   if (typeof presets?.acquireScope !== 'function' || typeof tools?.definitions !== 'function') return empty
   let lease
   try {
@@ -123,7 +123,7 @@ export async function toolsetOfMode(ctx, modeId) {
  * @returns {Set<string>}
  */
 export function currentToolsOf(ctx, agent) {
-  const tools = ctx?.tools
+  const tools = serviceOf(ctx, 'tools')
   const names = new Set()
   if (typeof tools?.definitions !== 'function') return names
   try {
@@ -385,7 +385,7 @@ async function revertMemory(sessionId) {
  */
 export async function currentModeOf(ctx, sessionId) {
   try {
-    const presets = ctx?.agentPresets
+    const presets = serviceOf(ctx, 'agentPresets')
     if (typeof presets?.presetForSession === 'function') {
       const header = await sessionHeader(ctx, sessionId)
       const value = presets.presetForSession(header ?? sessionId)

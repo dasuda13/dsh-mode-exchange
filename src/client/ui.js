@@ -575,6 +575,104 @@ body[data-ds-dark-theme] .dsh-me-root {
 }
 .dsh-me-details[open] summary::before { transform: rotate(90deg); }
 
+/* ---------- 折叠选择器（会话 / 工作区） ---------- */
+.dsh-me-picker {
+  border: .5px solid var(--me-card-bd);
+  border-radius: var(--dsw-radius-lg, 16px);
+  background: var(--me-card-fill);
+  transition: border-color .16s var(--me-ease);
+}
+.dsh-me-picker[open] { border-color: var(--me-bd); }
+.dsh-me-pickersummary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: inherit;
+  cursor: pointer;
+  list-style: none;
+}
+.dsh-me-pickersummary::-webkit-details-marker { display: none; }
+.dsh-me-pickersummary:hover { background: var(--me-hover); }
+.dsh-me-pickerchevron {
+  flex: none;
+  display: inline-flex;
+  color: var(--me-label-4);
+  transition: transform .16s var(--me-ease);
+}
+.dsh-me-picker[open] .dsh-me-pickerchevron { transform: rotate(90deg); }
+.dsh-me-pickerlabel { flex: none; font-size: 12px; line-height: 18px; color: var(--me-label-3); }
+.dsh-me-pickervalue {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: right;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--me-label);
+}
+.dsh-me-pickervalue[data-empty="true"] { font-weight: 400; color: var(--me-label-4); }
+.dsh-me-pickerbody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 8px;
+  padding: 8px 0 8px;
+  border-top: .5px solid var(--me-bd-soft);
+}
+.dsh-me-pickerlist {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 232px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.dsh-me-option {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm, 8px);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  color: var(--me-label-2);
+  cursor: pointer;
+}
+.dsh-me-option:hover { background: var(--me-hover); }
+.dsh-me-option[data-active="true"] {
+  background: color-mix(in srgb, var(--me-accent) 12%, transparent);
+  color: var(--me-label);
+}
+.dsh-me-optionhead { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.dsh-me-optiontitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  line-height: 19px;
+}
+.dsh-me-optionmeta {
+  font-size: 11.5px;
+  line-height: 16px;
+  color: var(--me-label-4);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dsh-me-optionmark { flex: none; font-size: 11px; color: var(--me-accent); }
+.dsh-me-pickerhint { padding: 0 12px 9px; }
+
 .dsh-me-root :focus-visible {
   outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--me-accent));
   outline-offset: 1px;
@@ -841,6 +939,87 @@ export function StepList({ items }) {
         item.detail ? h('span', { className: 'dsh-me-dim' }, item.detail) : null,
       ),
     )),
+  )
+}
+
+/**
+ * 折叠选择器：摘要行常显「当前值」，展开后是候选列表（单选）。
+ *
+ * 摘要行不随展开收起而丢失上下文——这正是用户要的「先看清楚再改」；
+ * 列表为空时给一行提示，而不是渲染空盒子。
+ *
+ * @param {{
+ *   label: string,
+ *   value?: string,
+ *   valueLabel?: string,
+ *   options: Array<{ value: string, label: string, meta?: string, badge?: any, title?: string }>,
+ *   open?: boolean,
+ *   onOpenChange?: (open: boolean) => void,
+ *   onChange?: (value: string) => void,
+ *   disabled?: boolean,
+ *   empty?: string,
+ *   hint?: string,
+ *   icon?: any,
+ * }} props
+ */
+export function Picker({ label, value, valueLabel, options, open, onOpenChange, onChange, disabled, empty, hint, icon }) {
+  const items = Array.isArray(options) ? options : []
+  const current = items.find(item => String(item.value) === String(value))
+  const shown = valueLabel !== undefined && valueLabel !== null && valueLabel !== ''
+    ? String(valueLabel)
+    : current !== undefined && current.label !== undefined && current.label !== null
+      ? String(current.label)
+      : ''
+  return h('details', {
+    className: 'dsh-me-picker',
+    open: open === true,
+    onToggle(event) {
+      if (typeof onOpenChange !== 'function') return
+      const next = Boolean(event && event.currentTarget && event.currentTarget.open)
+      onOpenChange(next)
+    },
+  },
+  h('summary', { className: 'dsh-me-pickersummary', title: hint },
+    h('span', { className: 'dsh-me-pickerchevron' },
+      icon || h('svg', {
+        width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none',
+        stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round',
+        'aria-hidden': true, style: { display: 'block' },
+      }, h('path', { d: 'M4.2 2.4 7.8 6l-3.6 3.6' })),
+    ),
+    h('span', { className: 'dsh-me-pickerlabel' }, label),
+    h('span', {
+      className: 'dsh-me-pickervalue',
+      'data-empty': shown === '' ? 'true' : 'false',
+    }, shown === '' ? '\u2014' : shown),
+  ),
+  h('div', { className: 'dsh-me-pickerbody' },
+    items.length === 0
+      ? h('div', { className: 'dsh-me-hint' }, empty || '\u2014')
+      : h('div', { className: 'dsh-me-pickerlist', role: 'listbox' },
+        items.map(item => h('button', {
+          key: String(item.value),
+          type: 'button',
+          role: 'option',
+          className: 'dsh-me-option',
+          'data-active': String(item.value) === String(value) ? 'true' : 'false',
+          'aria-selected': String(item.value) === String(value) ? 'true' : 'false',
+          title: item.title,
+          disabled: disabled === true,
+          onClick() {
+            if (typeof onChange === 'function') onChange(String(item.value))
+            if (typeof onOpenChange === 'function') onOpenChange(false)
+          },
+        },
+        h('span', { className: 'dsh-me-optionhead' },
+          h('span', { className: 'dsh-me-optiontitle' }, item.label === undefined || item.label === null ? '\u2014' : String(item.label)),
+          item.badge ? h('span', { className: 'dsh-me-optionmark' }, item.badge) : null,
+        ),
+        item.meta ? h('span', { className: 'dsh-me-optionmeta' }, String(item.meta)) : null,
+        )),
+      ),
+  ),
+  hint ? h('div', { className: 'dsh-me-hint dsh-me-pickerhint' }, hint) : null,
   )
 }
 

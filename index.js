@@ -70,11 +70,7 @@ export async function apply(ctx, rawConfig) {
   }
 
   // ② 安装会话级 guard —— 软切换的第二道防线，对未登记会话完全透明。
-  if (typeof ctx.effect === 'function') {
-    ctx.effect(() => installGuard(ctx), 'mode-exchange.guard')
-  } else {
-    installGuard(ctx)
-  }
+  installGuardWhenReady(ctx, logger, capabilities)
 
   // ③ 恢复上次运行遗留的软切换状态（提示词 + guard 表）。
   try {
@@ -94,6 +90,68 @@ export async function apply(ctx, rawConfig) {
   startRoutes(ctx, { config, capabilities })
 
   logger.info(`dsh-mode-exchange 已就绪（数据目录 ${dirs.root}）`)
+}
+
+/**
+ * 安装会话级 guard（②）。
+ *
+ * 坑：`tools` 不在本插件的 inject 清单里，直接 `ctx.tools` 会撞 Cordis 的注入检查
+ * （cannot get property "tools" without inject）。之前这里包了 try/catch，异常被吞掉后
+ * 返回空 disposer —— 表现是「guard 从没装上过」而不是报错。改法与 startRoutes 同构：
+ *   1. 先用 serviceOf 非 strict 读一次，读到就装；
+ *   2. 读不到就交给 ctx.inject(['tools'], …)，服务就绪时再装。
+ *
+ * @param {any} ctx
+ * @param {{ info: (message: string) => void, warn: (message: string) => void }} logger
+ * @param {import('./types/index.d.ts').Capabilities} capabilities 由 apply 创建、命令与路由共用同一引用
+ */
+function installGuardWhenReady(ctx, logger, capabilities) {
+  /**
+   * tools 就绪后补一次能力探测：apply 时 tools / agentTeams / workspaceRegistry
+   * 可能都还没装配，那一次探测会得到一串 false。probeCapabilities 不再缓存负结果，
+   * 所以这里重探是安全的；结果原地合并进 capabilities，命令与路由看到的是同一对象。
+   */
+  const refreshCapabilities = () => {
+    try {
+      const fresh = probeCapabilities(ctx, resolveServices(ctx))
+      if (fresh.notes.length > 0) {
+        capabilities.notes = fresh.notes
+        logCapabilities(ctx, fresh)
+      }
+      Object.assign(capabilities, fresh)
+    } catch (error) {
+      logger.warn(`能力重探失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  const install = scope => {
+    if (typeof scope.effect === 'function') {
+      scope.effect(() => installGuard(scope), 'mode-exchange.guard')
+    } else {
+      installGuard(scope)
+    }
+  }
+
+  if (serviceOf(ctx, 'tools') !== undefined) {
+    install(ctx)
+    return
+  }
+
+  if (typeof ctx.inject !== 'function') {
+    logger.warn('运行时不提供 tools 服务，软切换只能靠提示词层生效（guard 未安装）。')
+    return
+  }
+
+  const fiber = ctx.inject(['tools'], scope => {
+    install(scope)
+    refreshCapabilities()
+    logger.info('tools 服务就绪，已安装会话级 guard。')
+  })
+  if (fiber !== undefined && typeof fiber.then === 'function') {
+    fiber.then(undefined, error => {
+      logger.warn(`等待 tools 服务失败（guard 未安装）：${error instanceof Error ? error.message : String(error)}`)
+    })
+  }
 }
 
 /**

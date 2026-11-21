@@ -1,10 +1,15 @@
 {
   "name": "dsh-mode-exchange",
-  "version": "0.1.0",
+  "version": "0.1.7",
   "private": false,
   "license": "MIT",
   "description": "在已存在的 DSH 会话中切换 Agent 模式（软切换），以及按目标模式迁移重建会话（真导入原生消息序列）。",
-  "keywords": ["dsh", "dsh-bundle", "agent-preset", "session-migration"],
+  "keywords": [
+    "dsh",
+    "dsh-bundle",
+    "agent-preset",
+    "session-migration"
+  ],
   "homepage": "https://github.com/dasuda13/dsh-mode-exchange#readme",
   "repository": {
     "type": "git",
@@ -35,13 +40,11 @@
     "LICENSE"
   ],
   "icon": "./icon.svg",
-  "dependencies": {
-    "@deepseek-ai/schemastery": "3.19.0"
-  },
   "scripts": {
     "build": "node scripts/build-client.mjs",
     "check": "node scripts/build-client.mjs --check",
     "test": "node scripts/smoke-render.mjs",
+    "smoke": "node scripts/smoke-imports.mjs && node scripts/smoke-inject.mjs && node scripts/smoke-apply.mjs && node scripts/smoke-host.mjs && node scripts/smoke-seed.mjs && node scripts/smoke-migrate.mjs && node scripts/smoke-menu.mjs && node scripts/smoke-handoff.mjs && node scripts/smoke-render.mjs",
     "probe": "node scripts/probe.js --print"
   },
   "engines": {
@@ -56,7 +59,9 @@
     "client": {
       "platform": "web",
       "immediately": true,
-      "inject": ["@deepseek-ai/dsh-client-ui-conversation"]
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
     }
   }
 }

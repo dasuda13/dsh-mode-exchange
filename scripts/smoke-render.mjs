@@ -159,12 +159,19 @@ function makeDom() {
   return { document, appended }
 }
 
-function makeCtx(registrations) {
+function makeCtx(registrations, menus) {
   const services = {
     locale: { getSnapshot: () => ({ locale: 'zh' }), register: () => {} },
     sessions: { list: { getSnapshot: () => ({ byId: {} }), subscribe: () => () => {} } },
     styles: { insert: () => () => {} },
     layout: { getSnapshot: () => ({}), subscribe: () => () => {} },
+    // 宿主 contextMenus 的最小桩：只记录注册，不渲染弹窗。
+    contextMenus: {
+      register(input) { if (menus) menus.push(input); return () => {} },
+      notify() {},
+      open() {},
+      close() {},
+    },
   }
   return {
     effect(factory) {
@@ -199,7 +206,8 @@ async function main() {
   const previousDocument = Object.prototype.hasOwnProperty.call(globalScope, 'document') ? globalScope.document : undefined
   globalScope.document = document
   const registrations = {}
-  const ctx = makeCtx(registrations)
+  const menus = []
+  const ctx = makeCtx(registrations, menus)
   client.apply(ctx)
   const injected = appended.filter(tag => tag.attributes['data-plugin-css'] === 'dsh-mode-exchange/ui.css')
   check('apply() 把样式表贴进 document.head', appended.length === 1, '贴入 ' + appended.length + ' 个 <style>')
@@ -211,6 +219,19 @@ async function main() {
   check('注册了设置页', (registrations['settings.section'] || []).length === 1)
   check('注册了设置页图标', (registrations['settings.section.icon'] || []).length === 1)
   check('注册了侧栏入口', (registrations['sidebar.panellist'] || []).length === 1)
+  // 两个入口（切换 / 迁移）× 两个 target = 四条贡献。
+  const menuKeys = menus.map(item => item.target + '/' + item.id).sort()
+  check('注册了会话右键菜单（两个入口 × 两个 target）',
+    menus.length === 4 &&
+    new Set(menus.map(item => item.id)).size === 2 &&
+    menus.every(item => item.id === 'mode-exchange.switch' || item.id === 'mode-exchange.migrate') &&
+    menuKeys.join(' ') === [
+      'session/mode-exchange.migrate',
+      'session/mode-exchange.switch',
+      'sessionHeader/mode-exchange.migrate',
+      'sessionHeader/mode-exchange.switch',
+    ].join(' '),
+    JSON.stringify(menuKeys))
 
   // 回归点：样式表必须作为 <style> 元素随组件渲染出来（宿主里没有 styles 服务）。
   for (const [label, reg] of [['设置页', (registrations['settings.section'] || [])[0]], ['中央面板', (registrations.main || [])[0]]]) {

@@ -1,6 +1,6 @@
 /**
  * dsh-mode-exchange 客户端产物 —— 由 scripts/build-client.mjs 生成，请勿手工编辑。
- * 源文件：src/client/{i18n.js, ui.js, api.js, store.js, panel.js, settings.js, entry.js}。
+ * 源文件：src/client/{i18n.js, ui.js, api.js, store.js, panel.js, settings.js, menu.js, entry.js}。
  * 生成时间：构建时写入，不参与逻辑；如需重新生成请运行 `node scripts/build-client.mjs`。
  */
 window.__ModuleLoader__.load({
@@ -49,6 +49,36 @@ const ZH = {
   'session.switchable': '可切换',
   'session.notSwitchable': '不可切换',
   'session.notSwitchableReason': '原因：{reason}',
+  'session.id': '会话 ID',
+
+  'picker.session': '会话',
+  'picker.workspace': '工作区',
+  'picker.sessionLabel': '要操作的会话',
+  'picker.workspaceLabel': '新会话的工作区',
+  'picker.sessionHint': '默认选中你最近打开的那个会话',
+  'picker.workspaceHint': '新会话会加入选中的工作区',
+  'picker.noSessions': '还没有可选的会话',
+  'picker.noWorkspaces': '还没有工作区',
+  'picker.running': '运行中',
+  'picker.archived': '已归档',
+  'picker.live': '进行中',
+  'picker.noTitle': '未命名会话',
+
+  'menu.switch': '切换模式',
+  'menu.currentMode': '{mode}（当前）',
+  'menu.loading': '正在读取模式…',
+  'menu.noModes': '没有可用的模式',
+  'menu.blocked': '不可切换：{reason}',
+  'menu.switched': '已切换到「{mode}」模式',
+  'menu.failed': '切换失败：{reason}',
+  'menu.migrate': '迁移重建',
+  'menu.migrating': '正在迁移「{mode}」…',
+  'menu.migratingItem': '迁移进行中…',
+  'menu.migrateStarted': '已开始迁移到「{mode}」',
+  'menu.migrateResume': '这个会话有未完成的迁移，请到面板里继续',
+  'menu.migrateFailed': '迁移失败：{reason}',
+  'menu.viewProgress': '查看进度',
+  'menu.panelUnavailable': '打不开面板，请从侧栏手动打开「模式迁移」',
 
   'switch.statusTitle': '当前会话状态',
   'switch.heading': '运行时模式切换',
@@ -100,6 +130,9 @@ const ZH = {
   'migrate.target2': '新会话',
   'migrate.logPath': '日志路径',
   'migrate.messageCount': '消息数',
+  'migrate.targetWorkspace': '新会话工作区',
+  'migrate.targetWorkspaceAuto': '已自动加入（按目录匹配）',
+  'migrate.targetWorkspaceNone': '未加入任何工作区',
   'migrate.teamEnabled': '团队协作',
   'migrate.teamOn': '已启用',
   'migrate.teamOff': '未启用',
@@ -199,6 +232,36 @@ const EN = {
   'session.switchable': 'Switchable',
   'session.notSwitchable': 'Not switchable',
   'session.notSwitchableReason': 'Reason: {reason}',
+  'session.id': 'Session ID',
+
+  'picker.session': 'Session',
+  'picker.workspace': 'Workspace',
+  'picker.sessionLabel': 'Session to operate on',
+  'picker.workspaceLabel': 'Workspace for the new session',
+  'picker.sessionHint': 'Defaults to the session you opened last',
+  'picker.workspaceHint': 'The new session joins the selected workspace',
+  'picker.noSessions': 'No sessions yet',
+  'picker.noWorkspaces': 'No workspaces yet',
+  'picker.running': 'Running',
+  'picker.archived': 'Archived',
+  'picker.live': 'Live',
+  'picker.noTitle': 'Untitled session',
+
+  'menu.switch': 'Switch mode',
+  'menu.currentMode': '{mode} (current)',
+  'menu.loading': 'Reading modes…',
+  'menu.noModes': 'No modes available',
+  'menu.blocked': 'Not switchable: {reason}',
+  'menu.switched': 'Switched to "{mode}"',
+  'menu.failed': 'Switch failed: {reason}',
+  'menu.migrate': 'Migrate & rebuild',
+  'menu.migrating': 'Migrating to "{mode}"…',
+  'menu.migratingItem': 'Migration in progress…',
+  'menu.migrateStarted': 'Migration to "{mode}" started',
+  'menu.migrateResume': 'This session has an unfinished migration — continue it in the panel',
+  'menu.migrateFailed': 'Migration failed: {reason}',
+  'menu.viewProgress': 'View progress',
+  'menu.panelUnavailable': 'Cannot open the panel — open "Mode Exchange" from the sidebar',
 
   'switch.statusTitle': 'Current session',
   'switch.heading': 'Runtime mode switch',
@@ -250,6 +313,9 @@ const EN = {
   'migrate.target2': 'New session',
   'migrate.logPath': 'Log path',
   'migrate.messageCount': 'Messages',
+  'migrate.targetWorkspace': 'Target workspace',
+  'migrate.targetWorkspaceAuto': 'Auto-attached by directory',
+  'migrate.targetWorkspaceNone': 'Not attached to any workspace',
   'migrate.teamEnabled': 'Team',
   'migrate.teamOn': 'Enabled',
   'migrate.teamOff': 'Disabled',
@@ -939,6 +1005,104 @@ body[data-ds-dark-theme] .dsh-me-root {
 }
 .dsh-me-details[open] summary::before { transform: rotate(90deg); }
 
+/* ---------- 折叠选择器（会话 / 工作区） ---------- */
+.dsh-me-picker {
+  border: .5px solid var(--me-card-bd);
+  border-radius: var(--dsw-radius-lg, 16px);
+  background: var(--me-card-fill);
+  transition: border-color .16s var(--me-ease);
+}
+.dsh-me-picker[open] { border-color: var(--me-bd); }
+.dsh-me-pickersummary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: inherit;
+  cursor: pointer;
+  list-style: none;
+}
+.dsh-me-pickersummary::-webkit-details-marker { display: none; }
+.dsh-me-pickersummary:hover { background: var(--me-hover); }
+.dsh-me-pickerchevron {
+  flex: none;
+  display: inline-flex;
+  color: var(--me-label-4);
+  transition: transform .16s var(--me-ease);
+}
+.dsh-me-picker[open] .dsh-me-pickerchevron { transform: rotate(90deg); }
+.dsh-me-pickerlabel { flex: none; font-size: 12px; line-height: 18px; color: var(--me-label-3); }
+.dsh-me-pickervalue {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: right;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--me-label);
+}
+.dsh-me-pickervalue[data-empty="true"] { font-weight: 400; color: var(--me-label-4); }
+.dsh-me-pickerbody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 8px;
+  padding: 8px 0 8px;
+  border-top: .5px solid var(--me-bd-soft);
+}
+.dsh-me-pickerlist {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 232px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.dsh-me-option {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm, 8px);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  color: var(--me-label-2);
+  cursor: pointer;
+}
+.dsh-me-option:hover { background: var(--me-hover); }
+.dsh-me-option[data-active="true"] {
+  background: color-mix(in srgb, var(--me-accent) 12%, transparent);
+  color: var(--me-label);
+}
+.dsh-me-optionhead { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.dsh-me-optiontitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  line-height: 19px;
+}
+.dsh-me-optionmeta {
+  font-size: 11.5px;
+  line-height: 16px;
+  color: var(--me-label-4);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dsh-me-optionmark { flex: none; font-size: 11px; color: var(--me-accent); }
+.dsh-me-pickerhint { padding: 0 12px 9px; }
+
 .dsh-me-root :focus-visible {
   outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--me-accent));
   outline-offset: 1px;
@@ -1208,6 +1372,87 @@ function StepList({ items }) {
   )
 }
 
+/**
+ * 折叠选择器：摘要行常显「当前值」，展开后是候选列表（单选）。
+ *
+ * 摘要行不随展开收起而丢失上下文——这正是用户要的「先看清楚再改」；
+ * 列表为空时给一行提示，而不是渲染空盒子。
+ *
+ * @param {{
+ *   label: string,
+ *   value?: string,
+ *   valueLabel?: string,
+ *   options: Array<{ value: string, label: string, meta?: string, badge?: any, title?: string }>,
+ *   open?: boolean,
+ *   onOpenChange?: (open: boolean) => void,
+ *   onChange?: (value: string) => void,
+ *   disabled?: boolean,
+ *   empty?: string,
+ *   hint?: string,
+ *   icon?: any,
+ * }} props
+ */
+function Picker({ label, value, valueLabel, options, open, onOpenChange, onChange, disabled, empty, hint, icon }) {
+  const items = Array.isArray(options) ? options : []
+  const current = items.find(item => String(item.value) === String(value))
+  const shown = valueLabel !== undefined && valueLabel !== null && valueLabel !== ''
+    ? String(valueLabel)
+    : current !== undefined && current.label !== undefined && current.label !== null
+      ? String(current.label)
+      : ''
+  return h('details', {
+    className: 'dsh-me-picker',
+    open: open === true,
+    onToggle(event) {
+      if (typeof onOpenChange !== 'function') return
+      const next = Boolean(event && event.currentTarget && event.currentTarget.open)
+      onOpenChange(next)
+    },
+  },
+  h('summary', { className: 'dsh-me-pickersummary', title: hint },
+    h('span', { className: 'dsh-me-pickerchevron' },
+      icon || h('svg', {
+        width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none',
+        stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round',
+        'aria-hidden': true, style: { display: 'block' },
+      }, h('path', { d: 'M4.2 2.4 7.8 6l-3.6 3.6' })),
+    ),
+    h('span', { className: 'dsh-me-pickerlabel' }, label),
+    h('span', {
+      className: 'dsh-me-pickervalue',
+      'data-empty': shown === '' ? 'true' : 'false',
+    }, shown === '' ? '\u2014' : shown),
+  ),
+  h('div', { className: 'dsh-me-pickerbody' },
+    items.length === 0
+      ? h('div', { className: 'dsh-me-hint' }, empty || '\u2014')
+      : h('div', { className: 'dsh-me-pickerlist', role: 'listbox' },
+        items.map(item => h('button', {
+          key: String(item.value),
+          type: 'button',
+          role: 'option',
+          className: 'dsh-me-option',
+          'data-active': String(item.value) === String(value) ? 'true' : 'false',
+          'aria-selected': String(item.value) === String(value) ? 'true' : 'false',
+          title: item.title,
+          disabled: disabled === true,
+          onClick() {
+            if (typeof onChange === 'function') onChange(String(item.value))
+            if (typeof onOpenChange === 'function') onOpenChange(false)
+          },
+        },
+        h('span', { className: 'dsh-me-optionhead' },
+          h('span', { className: 'dsh-me-optiontitle' }, item.label === undefined || item.label === null ? '\u2014' : String(item.label)),
+          item.badge ? h('span', { className: 'dsh-me-optionmark' }, item.badge) : null,
+        ),
+        item.meta ? h('span', { className: 'dsh-me-optionmeta' }, String(item.meta)) : null,
+        )),
+      ),
+  ),
+  hint ? h('div', { className: 'dsh-me-hint dsh-me-pickerhint' }, hint) : null,
+  )
+}
+
 /** 时间戳格式化（YYYY-MM-DD HH:mm:ss）。 */
 function formatTime(value) {
   if (value === undefined || value === null || value === '') return '\u2014'
@@ -1260,6 +1505,7 @@ function shortSessionId(value) {
     Toggle,
     Button,
     StepList,
+    Picker,
     formatTime,
     formatElapsed,
     shortSessionId,
@@ -1351,6 +1597,10 @@ function createApi(t) {
     archiveOld: (sessionId, confirm, backup) => call(t, 'POST', '/archive-old', { sessionId, confirm, backup }),
     /** 保存插件配置。 */
     saveConfig: patch => call(t, 'POST', '/config', patch),
+    /** 会话清单（带标题、所属工作区），供面板选择器。 */
+    listSessions: () => call(t, 'GET', '/sessions'),
+    /** 工作区清单，供面板选择器。 */
+    listWorkspaces: () => call(t, 'GET', '/workspaces'),
   }
 }
 
@@ -1368,6 +1618,7 @@ const __mod_store = (() => {
 
 const EMPTY_STATE = {
   sessionId: null,
+  title: null,
   loading: false,
   loaded: false,
   error: null,
@@ -1381,6 +1632,10 @@ const EMPTY_STATE = {
   capabilities: { seedCreate: false, scopedRestrict: false, scopedPrompt: false, teamSwitch: false, attachSession: false, notes: [] },
   migrations: [],
   job: null,
+  /** 菜单发起的迁移属于哪个会话；面板据此把进度接到正确的会话上。 */
+  jobSessionId: null,
+  sessions: [],
+  workspaces: [],
 }
 
 function shallowEqualConfig(a, b) {
@@ -1458,7 +1713,7 @@ const __mod_panel = (() => {
  * 组件通过 makePanel(React, deps) 构造，deps 提供 api、store、文案与 UI 原子。
  */
 
-const { Notice, Field, Select, Toggle, TextArea, Button, PanelHead, StepList, Card, Section, Tabs, Badge, EmptyState, StyleTag, formatTime, formatElapsed, shortSessionId } = __mod_ui;
+const { Notice, Field, Select, Toggle, TextArea, Button, PanelHead, StepList, Card, Section, Tabs, Badge, EmptyState, StyleTag, Picker, formatTime, formatElapsed, shortSessionId } = __mod_ui;
 const STEP_KEYS = ['export', 'verify', 'create', 'import', 'team', 'archive', 'report']
 
 function stepsOf(t, job) {
@@ -1500,9 +1755,51 @@ function makePanel(React, deps) {
     return snapshot
   }
 
+  /**
+   * 宿主客户端侧的会话摘要（sessions.list）。
+   *
+   * 面板要显示「和左侧会话列表一模一样的名字」，而宿主客户端早就把这件事做完了：
+   * `SessionSummary.displayTitle` 的回退链是 durable title → 项目目录名 → id。
+   * 直接读它，比从宿主侧绕一圈更准，也不会因为标题服务缺失而退化成裸 id。
+   */
+  function useSessionTitles() {
+    const read = () => {
+      try {
+        const sessions = deps.ctx && typeof deps.ctx.get === 'function' ? deps.ctx.get('sessions') : null
+        const snapshot = sessions && sessions.list ? sessions.list.getSnapshot() : null
+        return (snapshot && snapshot.byId) || {}
+      } catch {
+        return {}
+      }
+    }
+    const [byId, setById] = React.useState(read)
+    React.useEffect(() => {
+      let sessions = null
+      try {
+        sessions = deps.ctx && typeof deps.ctx.get === 'function' ? deps.ctx.get('sessions') : null
+      } catch {
+        sessions = null
+      }
+      if (!sessions || !sessions.list || typeof sessions.list.subscribe !== 'function') return undefined
+      const sync = () => setById(read())
+      sync()
+      const dispose = sessions.list.subscribe(sync)
+      return () => { if (typeof dispose === 'function') dispose() }
+    }, [])
+    return byId
+  }
+
   function Panel(props) {
     const state = useStore()
-    const sessionId = props.sessionId || state.sessionId
+    const sessionTitles = useSessionTitles()
+    // 面板默认跟随宿主主视图的会话；用户在「选择会话」里挑过之后，以他的选择为准。
+    const [pickedSessionId, setPickedSessionId] = React.useState('')
+    const [workspaceId, setWorkspaceId] = React.useState('')
+    // 用户手动挑过工作区之后就不再跟着会话走，否则每次都把他选的覆盖掉。
+    const [workspaceTouched, setWorkspaceTouched] = React.useState(false)
+    const [openPicker, setOpenPicker] = React.useState('')
+    const mainViewRef = React.useRef(props.sessionId || null)
+    const sessionId = pickedSessionId || props.sessionId || state.sessionId
     const [tab, setTab] = React.useState('switch')
     const [target, setTarget] = React.useState('')
     const [busy, setBusy] = React.useState('')
@@ -1537,6 +1834,7 @@ function makePanel(React, deps) {
           if (cancelled) return
           store.settle({
             sessionId: value.sessionId,
+            title: value.title ?? null,
             currentMode: value.currentMode,
             switchable: value.switchable,
             blockedReason: value.blockedReason,
@@ -1553,6 +1851,66 @@ function makePanel(React, deps) {
       return () => { cancelled = true }
     }, [sessionId])
 
+    // 会话清单 / 工作区清单：面板要让人按「标题」认会话，而不是一串 session- 编码。
+    // 这两份数据只在打开面板时拉一次；切换或迁移会话时不需要实时同步宿主。
+    React.useEffect(() => {
+      let cancelled = false
+      api.listSessions()
+        .then(value => { if (!cancelled) store.set({ sessions: (value && value.items) || [] }) })
+        .catch(() => { if (!cancelled) store.set({ sessions: [] }) })
+      api.listWorkspaces()
+        .then(value => { if (!cancelled) store.set({ workspaces: (value && value.items) || [] }) })
+        .catch(() => { if (!cancelled) store.set({ workspaces: [] }) })
+      return () => { cancelled = true }
+    }, [])
+
+    // 首次拿到清单后定默认值：优先「用户上次点进来的会话」（就是 props 给的那个），
+    // 其次清单里的第一个；工作区跟着这个会话走。用户手动选过就不再覆盖。
+    React.useEffect(() => {
+      const sessions = state.sessions || []
+      if (sessions.length === 0) return
+      if (pickedSessionId) return
+      const known = props.sessionId || state.sessionId
+      if (known) return
+      // 宿主没给主视图会话时才退回清单第一个；给了就以它为准，不要把人从当前对话上挪走。
+      const first = sessions[0]
+      if (first && first.id) setPickedSessionId(first.id)
+    }, [state.sessions])
+
+    // 用户在左侧会话列表里换了对话：面板要跟着回到那个会话，清掉手动选择，
+    // 否则「我在左边点了 A，面板还停在刚才手选的 B」会让人以为点错了。
+    React.useEffect(() => {
+      const next = props.sessionId || null
+      if (mainViewRef.current === next) return
+      mainViewRef.current = next
+      setPickedSessionId('')
+      setWorkspaceTouched(false)
+    }, [props.sessionId])
+
+    // 工作区默认跟着「要操作的会话」走；会话没有归属或还没选中时才退回第一个工作区。
+    React.useEffect(() => {
+      if (workspaceTouched) return
+      const workspaces = state.workspaces || []
+      if (workspaces.length === 0) return
+      const sessions = state.sessions || []
+      const current = sessions.find(item => item.id === sessionId)
+      const fromSession = current && current.workspaceId
+      const next = fromSession || (workspaces[0] && workspaces[0].id) || ''
+      if (next && next !== workspaceId) setWorkspaceId(next)
+    }, [state.workspaces, state.sessions, sessionId, workspaceTouched])
+
+    // 换会话时清掉上一个会话的切换/迁移结果，避免把旧结论套到新会话上。
+    React.useEffect(() => {
+      setTarget('')
+      setMigrateMode('')
+      setJob(null)
+      setReport(null)
+      setResume(null)
+      setConfirming(null)
+      setInfo('')
+      setError('')
+    }, [sessionId])
+
     // 用配置默认值填表单（只在首次或配置变化且用户没改过时）。
     React.useEffect(() => {
       const config = state.config || {}
@@ -1561,7 +1919,7 @@ function makePanel(React, deps) {
       setMigrateMode(previous => previous || fallback)
       if (typeof config.deleteOldSession === 'boolean') setDeleteOld(config.deleteOldSession)
       if (typeof config.enableTeam === 'boolean') setTeam(config.enableTeam && state.capabilities && state.capabilities.teamSwitch === true)
-    }, [state.config, state.currentMode, state.capabilities])
+    }, [state.config, state.currentMode, state.capabilities, sessionId])
 
     // 任务轮询：运行中每 800ms 读一次状态，同时更新耗时。
     React.useEffect(() => {
@@ -1586,7 +1944,95 @@ function makePanel(React, deps) {
       return () => { stopped = true; clearInterval(timer) }
     }, [job && job.jobId, job && job.status])
 
+    // 右键菜单发起的迁移只往 store 写一个 jobId，没有组件能直接 setJob；
+    // 面板接管它，这样「从菜单发起 → 打开面板看进度」看的是同一个任务。
+    // 菜单可能是在别的会话上发起的，所以先把选择器切到那条会话，再接管任务。
+    React.useEffect(() => {
+      const pendingJob = state.job
+      if (!pendingJob) return
+      const owner = state.jobSessionId
+      if (owner && owner !== sessionId) { setPickedSessionId(owner); return }
+      if (job && job.jobId === pendingJob) return
+      setJob({ jobId: pendingJob, status: 'running', stepIndex: 0, stepName: t('steps.export.name'), totalSteps: 7 })
+      setElapsed(0)
+      setTab('migrate')
+    }, [state.job, state.jobSessionId, job && job.jobId, sessionId])
+
+    // 任务收尾后把 store 里的「待接管」标记清掉，避免下次打开面板又接管一遍。
+    React.useEffect(() => {
+      if (!state.job || !job || job.jobId !== state.job) return
+      if (job.status === 'running' || job.status === 'pending') return
+      store.set({ job: null, jobSessionId: null })
+    }, [state.job, job && job.jobId, job && job.status])
+
     const canSwitch = state.switchable !== false && !state.blockedReason
+
+    // ---- 会话 / 工作区选择器 ----------------------------------------------
+    // 会话只显示「标题 + 所属工作区」，让它能被人认出来；短 id 退到副行做兜底。
+    const sessions = state.sessions || []
+    const workspaces = state.workspaces || []
+    const workspaceName = id => {
+      const hit = workspaces.find(item => item.id === id)
+      return hit ? hit.title : ''
+    }
+    const sessionBrief = sessions.find(item => item.id === sessionId)
+    // 标题优先级：宿主客户端 displayTitle（与左侧列表一致）→ 宿主侧标题 → 清单里的标题。
+    const titleOf = id => {
+      if (!id) return ''
+      const row = sessionTitles[id] || sessionTitles[String(id)]
+      if (row && typeof row.displayTitle === 'string' && row.displayTitle.length > 0) return row.displayTitle
+      const brief = sessions.find(item => item.id === id)
+      return (brief && brief.title) || ''
+    }
+    const sessionTitle = titleOf(sessionId) || state.title || t('picker.noTitle')
+    const sessionMeta = item => {
+      const parts = []
+      const space = item.workspaceId ? workspaceName(item.workspaceId) : ''
+      if (space) parts.push(space)
+      parts.push(shortSessionId(item.id))
+      if (item.running) parts.push(t('picker.running'))
+      else if (item.archived) parts.push(t('picker.archived'))
+      return parts.join(' · ')
+    }
+    const sessionOptions = sessions.map(item => ({
+      value: item.id,
+      label: titleOf(item.id) || item.title || t('picker.noTitle'),
+      meta: sessionMeta(item),
+      title: item.cwd || item.id,
+    }))
+    const workspaceOptions = workspaces.map(item => ({
+      value: item.id,
+      label: item.title || item.path || item.id,
+      meta: item.path,
+      title: item.path,
+    }))
+    const selectedWorkspace = workspaces.find(item => item.id === workspaceId)
+    const sessionPicker = h(Picker, {
+      label: t('picker.sessionLabel'),
+      value: sessionId || '',
+      valueLabel: sessionId ? sessionTitle : '',
+      options: sessionOptions,
+      open: openPicker === 'session',
+      onOpenChange: next => setOpenPicker(next ? 'session' : ''),
+      // 换会话时让工作区重新跟随新会话（用户没手动选过工作区的话），
+      // 否则会出现「切到 B 会话、工作区还停在 A 的」这种错位。
+      onChange: next => { setPickedSessionId(next); setWorkspaceTouched(false); setOpenPicker('') },
+      empty: t('picker.noSessions'),
+      hint: t('picker.sessionHint'),
+      disabled: busy !== '',
+    })
+    const workspacePicker = h(Picker, {
+      label: t('picker.workspaceLabel'),
+      value: workspaceId || '',
+      valueLabel: selectedWorkspace ? (selectedWorkspace.title || selectedWorkspace.path) : '',
+      options: workspaceOptions,
+      open: openPicker === 'workspace',
+      onOpenChange: next => setOpenPicker(next ? 'workspace' : ''),
+      onChange: next => { setWorkspaceId(next); setWorkspaceTouched(true); setOpenPicker('') },
+      empty: t('picker.noWorkspaces'),
+      hint: t('picker.workspaceHint'),
+      disabled: busy !== '',
+    })
 
     async function applySwitch() {
       if (!target) { setError(t('switch.selectModeFirst')); return }
@@ -1638,6 +2084,7 @@ function makePanel(React, deps) {
       try {
         const request = {
           sessionId,
+          workspaceId: workspaceId || undefined,
           mode: migrateMode,
           deleteOld: deleteOld === true,
           team: team === true,
@@ -1737,7 +2184,8 @@ function makePanel(React, deps) {
           : h(Badge, { tone: 'warn' }, t('session.notSwitchable')),
       ),
       h('div', { className: 'dsh-me-stack-sm' },
-        h(Field, { label: t('session.current'), value: shortSessionId(sessionId), mono: true }),
+        h(Field, { label: t('session.current'), value: sessionId ? sessionTitle : t('session.modeFallback') }),
+        h(Field, { label: t('session.id'), value: shortSessionId(sessionId), mono: true }),
         h(Field, { label: t('session.mode'), value: state.currentMode || t('session.modeFallback'), mono: true }),
       ),
       canSwitch || !state.blockedReason
@@ -1747,6 +2195,7 @@ function makePanel(React, deps) {
 
     const switchTab = h('div', { className: 'dsh-me-stack' },
       statusCard,
+      h(Section, { title: t('picker.session') }, h(Card, null, sessionPicker)),
       h(Notice, { kind: 'warn' }, t('switch.softNotice')),
       h(Section, { title: t('switch.heading') },
         h(Card, null,
@@ -1795,6 +2244,9 @@ function makePanel(React, deps) {
 
     const migrateTab = h('div', { className: 'dsh-me-stack' },
       h(Notice, null, t('migrate.intro')),
+      h(Section, { title: t('picker.session') },
+        h(Card, null, sessionPicker, h('hr', { className: 'dsh-me-divider' }), workspacePicker),
+      ),
       h(Section, { title: t('migrate.heading') },
         h(Card, null,
           h(Select, {
@@ -1885,7 +2337,7 @@ function makePanel(React, deps) {
           h(Badge, { tone: 'warn' }, '⚠'),
         ),
         h('p', { className: 'dsh-me-hint' }, t('migrate.confirmBody', {
-          title: state.title || shortSessionId(sessionId),
+          title: sessionTitle,
           mode: confirming.mode,
         })),
         messageCount !== undefined
@@ -1912,9 +2364,14 @@ function makePanel(React, deps) {
             oldSession.archived ? t('migrate.oldArchived') : t('migrate.oldKept')),
         ),
         h('div', { className: 'dsh-me-stack-sm' },
-          value.source ? h(Field, { label: t('migrate.source'), value: shortSessionId(value.source.sessionId), mono: true }) : null,
+          value.source ? h(Field, { label: t('migrate.source'), value: value.source.title || shortSessionId(value.source.sessionId) }) : null,
           value.target ? h(Field, { label: t('migrate.target2'), value: shortSessionId(value.target.sessionId), mono: true }) : null,
           value.source ? h(Field, { label: t('migrate.messageCount'), value: String(value.source.messageCount) }) : null,
+          value.target ? h(Field, {
+            label: t('migrate.targetWorkspace'),
+            value: value.target.workspaceTitle
+              || (value.target.attachedToWorkspace ? t('migrate.targetWorkspaceAuto') : t('migrate.targetWorkspaceNone')),
+          }) : null,
           h(Field, { label: t('migrate.teamEnabled'), value: teamInfo.enabled ? t('migrate.teamOn') : t('migrate.teamOff') }),
           log.path ? h(Field, { label: t('migrate.logPath'), value: log.path, mono: true }) : null,
           oldSession.backupPath ? h(Field, { label: t('migrate.backupPath'), value: oldSession.backupPath, mono: true }) : null,
@@ -2222,6 +2679,468 @@ function makeSettingsIcon(React) {
   };
 })();
 
+/* ---- menu.js ---- */
+const __mod_menu = (() => {
+/**
+ * 会话右键菜单：在宿主的会话列表行（target kind = 'session'）和会话标题「更多」菜单
+ * （kind = 'sessionHeader'）里挂两个入口 ——「切换模式」（软切换）与「迁移重建」
+ * （按目标模式建一个新会话），子菜单都按模式列叶子。
+ *
+ * 三条宿主契约决定了这里的写法（源自 @deepseek-ai/dsh-client-ui-context-menu）：
+ *   1. resolve() 要么同步返回，要么在 resolutionTimeoutMs（默认 1000ms）内完成，
+ *      所以这里只读内存缓存；网络刷新交给后台跑，刷完通过 observe 的快照触发重新解析。
+ *   2. 带 children 的菜单项被点击时不会执行 run，只会展开子菜单 —— 切换动作只能放叶子上。
+ *   3. 同一个 target + id 重复注册会抛 Duplicate menu contribution，所以每个 target 只注册一次。
+ *
+ * 服务取法：contextMenus 是可选依赖，不写进 entry 的 inject 列表，而是用
+ * ctx.inject(['contextMenus', 'slots'], ...) 等它就绪；这样宿主没有该服务时，
+ * 面板与设置页照常工作，不会被一起拖垮。
+ */
+
+const MENU_ID = 'mode-exchange.switch'
+const MIGRATE_MENU_ID = 'mode-exchange.migrate'
+const MENU_ORDER = 350
+const ICON_KEY = 'mode-exchange.switch'
+const TARGETS = ['session', 'sessionHeader']
+/** 已经挂过菜单的 api 实例（每个插件实例一份），用于防重复注册。 */
+const MOUNTED = new WeakSet()
+/** 缓存保鲜期：菜单每次打开都会尝试刷新，但同一份数据 15s 内不重复请求。 */
+const FRESH_MS = 15000
+
+/** 极简可观察快照：宿主 contextMenus 的 observe() 需要 getSnapshot / subscribe。 */
+function createSnapshot(initial) {
+  let value = initial
+  const listeners = new Set()
+  return {
+    getSnapshot() { return value },
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
+    set(next) {
+      if (Object.is(next, value)) return
+      value = next
+      for (const listener of Array.from(listeners)) {
+        try { listener(value) } catch (error) { void error }
+      }
+    },
+  }
+}
+
+/**
+ * 取一个可选服务。
+ * Cordis 的 ctx 是 Proxy：访问没有 inject 的服务属性会直接抛错，可选链只挡
+ * null/undefined、挡不住抛错，所以两条路径都得包 try/catch。
+ */
+function serviceOf(ctx, name) {
+  if (!ctx) return undefined
+  try {
+    if (typeof ctx.get === 'function') {
+      const value = ctx.get(name, false)
+      if (value !== undefined && value !== null) return value
+    }
+  } catch (error) {
+    void error
+  }
+  try {
+    const value = ctx[name]
+    if (value !== undefined && value !== null) return value
+  } catch (error) {
+    void error
+  }
+  return undefined
+}
+
+/** 会话列表行右键时宿主给的 target 是 { sessionId, displayTitle }。 */
+function sessionIdOf(value) {
+  if (!value || typeof value !== 'object') return ''
+  const id = value.sessionId
+  return typeof id === 'string' && id.length > 0 ? id : ''
+}
+
+function clip(text, limit) {
+  const value = String(text === undefined || text === null ? '' : text)
+  if (limit === undefined || value.length <= limit) return value
+  return value.slice(0, limit) + '…'
+}
+
+/** 菜单图标：两条带箭头的滑轨，与侧栏入口同一套图形语言。 */
+function makeIcon(h) {
+  return function ModeExchangeMenuIcon() {
+    return h('svg', {
+      viewBox: '0 0 16 16',
+      width: 14,
+      height: 14,
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 1.4,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      'aria-hidden': true,
+      style: { display: 'block', pointerEvents: 'none' },
+    },
+    h('path', { d: 'M2.6 5.4h8.2' }),
+    h('path', { d: 'M9 3.1 11.3 5.4 9 7.7' }),
+    h('path', { d: 'M13.4 10.6H5.2' }),
+    h('path', { d: 'M7 8.3 4.7 10.6 7 12.9' }),
+    )
+  }
+}
+
+/** 把两个 target 的贡献注册进宿主。 */
+function install(scope, menus, deps) {
+  const api = deps.api
+  const store = deps.store
+  const t = deps.t
+  const h = deps.h
+  // entry.js 会把插件级 ctx 塞进 deps；万一没有（比如单独复用这个模块），退回注册时拿到的 scope。
+  const ctx = deps.ctx || scope
+  if (typeof menus.register !== 'function') return undefined
+  if (!api || typeof api.switchMode !== 'function') return undefined
+
+  // 缓存形状：{ modes, config, modesError, modesAt, sessions: { [sessionId]: { currentMode, switchable, blockedReason, at } } }
+  const state = createSnapshot({ modes: null, config: null, modesError: null, modesAt: 0, sessions: {} })
+  const pending = new Set()
+  let fetchingModes = false
+
+  const patch = next => { state.set({ ...state.getSnapshot(), ...next }) }
+  const patchSession = (sessionId, next) => {
+    const current = state.getSnapshot()
+    const previous = current.sessions[sessionId] || {}
+    patch({ sessions: { ...current.sessions, [sessionId]: { ...previous, ...next } } })
+  }
+  const readSession = sessionId => state.getSnapshot().sessions[sessionId]
+
+  /** 拉全部模式：/state 不带 sessionId 时返回模式清单、配置与能力。 */
+  function refreshModes() {
+    const current = state.getSnapshot()
+    if (fetchingModes) return
+    if (current.modes !== null && current.modesError === null && Date.now() - current.modesAt < FRESH_MS) return
+    fetchingModes = true
+    Promise.resolve()
+      .then(() => api.getState(null))
+      .then(value => {
+        const modes = value && Array.isArray(value.modes) ? value.modes : []
+        const config = value && value.config && typeof value.config === 'object' ? value.config : null
+        patch({ modes, config, modesError: null, modesAt: Date.now() })
+      })
+      .catch(error => {
+        patch({ modesError: error && error.message ? error.message : String(error), modesAt: Date.now() })
+      })
+      .then(() => { fetchingModes = false })
+  }
+
+  /** 拉某个会话的当前模式与可切换性（用来标记当前模式、提前禁掉不可切换的会话）。 */
+  function refreshSession(sessionId) {
+    const known = readSession(sessionId)
+    if (known && Date.now() - (known.at || 0) < FRESH_MS) return
+    if (pending.has(sessionId)) return
+    pending.add(sessionId)
+    Promise.resolve()
+      .then(() => api.getState(sessionId))
+      .then(value => {
+        patchSession(sessionId, {
+          currentMode: value && value.currentMode ? String(value.currentMode) : null,
+          switchable: !(value && value.switchable === false),
+          blockedReason: value && value.blockedReason ? String(value.blockedReason) : null,
+          at: Date.now(),
+        })
+      })
+      .catch(() => {
+        // 读不到状态时不拦用户，只记下已经尝试过。
+        patchSession(sessionId, { at: Date.now() })
+      })
+      .then(() => { pending.delete(sessionId) })
+  }
+
+  /** action 是宿主 notice 上的一个文字按钮：{ label, run, failureLabel }。 */
+  function notify(text, success, action) {
+    try {
+      if (typeof menus.notify !== 'function') return
+      if (action === undefined) menus.notify(text, success === true)
+      else menus.notify(text, success === true, action)
+    } catch (error) {
+      void error
+    }
+  }
+
+  /** 迁移是后台长任务，菜单里只负责发起；后续进度在面板里看。 */
+  function progressAction() {
+    return {
+      label: t('menu.viewProgress'),
+      run: () => {
+        const layout = serviceOf(ctx, 'layout')
+        if (layout && typeof layout.selectPanel === 'function') layout.selectPanel('mode-exchange')
+      },
+      failureLabel: t('menu.panelUnavailable'),
+    }
+  }
+
+  /** 执行一次切换：结果同时反馈到菜单提示与（面板开着同一个会话时）面板状态。 */
+  function switchTo(sessionId, mode) {
+    const label = mode && mode.name ? String(mode.name) : String(mode && mode.id ? mode.id : '')
+    return Promise.resolve()
+      .then(() => api.switchMode(sessionId, String(mode.id)))
+      .then(value => {
+        patchSession(sessionId, { currentMode: String(mode.id), switchable: true, blockedReason: null, at: Date.now() })
+        try {
+          const panel = store && typeof store.getState === 'function' ? store.getState() : null
+          if (panel && panel.sessionId === sessionId && typeof store.set === 'function') {
+            store.set({
+              currentMode: String(mode.id),
+              switched: true,
+              snapshot: value && value.snapshot ? value.snapshot : panel.snapshot,
+            })
+          }
+        } catch (error) {
+          void error
+        }
+        notify(t('menu.switched', { mode: label }), true)
+      })
+      .catch(error => {
+        notify(t('menu.failed', { reason: error && error.message ? error.message : String(error) }), false)
+      })
+  }
+
+  /**
+   * 执行一次迁移重建。
+   * 菜单里没法弹二次确认框，所以这里把「点了模式」当成用户已经确认：
+   * confirmDelete 传 true 才能越过台账对同一会话的幂等拦截。
+   * 其余参数一律取用户在设置页配好的默认值，不在菜单里另开入口。
+   */
+  function migrateTo(sessionId, mode) {
+    const label = mode && mode.name ? String(mode.name) : String(mode && mode.id ? mode.id : '')
+    const config = state.getSnapshot().config || {}
+    const backup = config.keepExportCopy !== false
+    // 标记写进快照里（不是模块级 Set），这样 observe 会触发重新解析，叶子立刻变灰防重复点击。
+    patchSession(sessionId, { migrating: true })
+    notify(t('menu.migrating', { mode: label }), true)
+    return Promise.resolve()
+      .then(() => api.migrate({
+        sessionId,
+        mode: String(mode.id),
+        deleteOld: config.deleteOldSession === true,
+        team: config.enableTeam === true,
+        confirmDelete: true,
+        backup,
+      }))
+      .then(value => {
+        if (value && value.needsResume) {
+          notify(t('menu.migrateResume'), false, progressAction())
+          return
+        }
+        notify(t('menu.migrateStarted', { mode: label }), true, progressAction())
+        try {
+          const panel = store && typeof store.getState === 'function' ? store.getState() : null
+          if (typeof store.set === 'function' && value && value.jobId) {
+            // 不要求面板正好停在这个会话上：面板会自己切到这条会话再展示进度。
+            store.set({ job: value.jobId, jobSessionId: sessionId })
+          }
+        } catch (error) {
+          void error
+        }
+      })
+      .catch(error => {
+        notify(t('menu.migrateFailed', { reason: error && error.message ? error.message : String(error) }), false, progressAction())
+      })
+      .then(() => { patchSession(sessionId, { migrating: false }) })
+  }
+
+  /** resolve 必须快：只读缓存，顺便把过期缓存丢给后台刷新。 */
+  function render(sessionId) {
+    if (sessionId.length === 0) return []
+    refreshModes()
+    refreshSession(sessionId)
+    const current = state.getSnapshot()
+    const info = readSession(sessionId)
+    const blocked = info && info.blockedReason ? String(info.blockedReason) : ''
+    const locked = blocked.length > 0 || Boolean(info && info.switchable === false)
+    const modes = Array.isArray(current.modes) ? current.modes : []
+    const children = []
+
+    if (modes.length === 0) {
+      const loading = current.modes === null && !current.modesError
+      children.push({
+        id: 'empty',
+        label: loading ? t('menu.loading') : t('menu.noModes'),
+        disabled: true,
+      })
+    } else {
+      for (const mode of modes) {
+        const id = String(mode && mode.id !== undefined && mode.id !== null ? mode.id : '')
+        if (id.length === 0) continue
+        const name = mode && mode.name ? String(mode.name) : id
+        const isCurrent = Boolean(info && info.currentMode === id)
+        children.push({
+          id: 'mode:' + id,
+          label: isCurrent ? t('menu.currentMode', { mode: name }) : name,
+          disabled: locked || isCurrent || mode.broken === true,
+          run: () => switchTo(sessionId, mode),
+        })
+      }
+    }
+
+    if (blocked.length > 0) {
+      children.push({
+        id: 'blocked',
+        label: t('menu.blocked', { reason: clip(blocked, 60) }),
+        disabled: true,
+        separatorBefore: true,
+      })
+    }
+
+    // 迁移重建的叶子与软切换不同：
+    //   · 当前模式也能选（「用同一个模式重建一个干净会话」正是主要用法）；
+    //   · 不理会 switchable —— 没有活 Agent、已归档的会话恰恰是最需要重建的。
+    const migrating = Boolean(info && info.migrating === true)
+    const migrateChildren = []
+    if (modes.length === 0) {
+      const loading = current.modes === null && !current.modesError
+      migrateChildren.push({
+        id: 'empty',
+        label: loading ? t('menu.loading') : t('menu.noModes'),
+        disabled: true,
+      })
+    } else {
+      for (const mode of modes) {
+        const id = String(mode && mode.id !== undefined && mode.id !== null ? mode.id : '')
+        if (id.length === 0) continue
+        const name = mode && mode.name ? String(mode.name) : id
+        const isCurrent = Boolean(info && info.currentMode === id)
+        migrateChildren.push({
+          id: 'migrate:' + id,
+          label: isCurrent ? t('menu.currentMode', { mode: name }) : name,
+          disabled: migrating || mode.broken === true,
+          run: () => migrateTo(sessionId, mode),
+        })
+      }
+    }
+    if (migrating) {
+      migrateChildren.push({
+        id: 'migrating',
+        label: t('menu.migratingItem'),
+        disabled: true,
+        separatorBefore: true,
+      })
+    }
+
+    const entries = [{
+      id: 'switch',
+      label: t('menu.switch'),
+      icon: { key: ICON_KEY },
+      children,
+    }]
+    // 迁移要调 api.migrate：客户端与宿主版本不匹配时它可能不在，这时只保留切换入口。
+    if (typeof api.migrate === 'function') {
+      entries.push({
+        id: 'migrate',
+        label: t('menu.migrate'),
+        icon: { key: ICON_KEY },
+        children: migrateChildren,
+      })
+    }
+    return entries
+  }
+
+  /**
+   * 一个 target 上挂两条贡献（切换 / 迁移）：宿主按 target + id 去重，
+   * 同一个 id 只能注册一次，而两条入口的顺序与 id 都不同，所以分开注册。
+   */
+  const ENTRIES = [
+    { id: MENU_ID, order: MENU_ORDER, pick: 'switch' },
+    { id: MIGRATE_MENU_ID, order: MENU_ORDER + 1, pick: 'migrate' },
+  ]
+
+  const disposers = []
+  for (const target of TARGETS) {
+    for (const entry of ENTRIES) {
+      // 注册失败（例如同一 target 上已有同名贡献）不能冒到 apply()，
+      // 否则整个客户端插件都会挂掉 —— 少一个右键菜单远比面板消失好。
+      const register = () => {
+        try {
+          const dispose = menus.register({
+            id: entry.id,
+            target,
+            order: entry.order,
+            observe: () => [state],
+            resolve: value => {
+              const actions = render(sessionIdOf(value))
+              const action = actions.find(item => item.id === entry.pick)
+              if (!action) return []
+              // 会话标题的「更多」菜单项目很密，加一条分隔线把它与内置项分开。
+              return [target === 'sessionHeader' ? { ...action, separatorBefore: true } : action]
+            },
+          })
+          return typeof dispose === 'function' ? dispose : () => {}
+        } catch (error) {
+          void error
+          return () => {}
+        }
+      }
+      if (typeof scope.effect === 'function') {
+        scope.effect(() => {
+          const dispose = register()
+          return () => { if (typeof dispose === 'function') dispose() }
+        }, 'mode-exchange: ' + target + ' ' + entry.id)
+      } else {
+        disposers.push(register())
+      }
+    }
+  }
+
+  // 图标走 keyed 插槽；注册失败（宿主没有该插槽）不影响菜单功能本身。
+  const slots = serviceOf(scope, 'slots')
+  if (slots && typeof slots.inject === 'function' && typeof slots.register === 'function') {
+    try {
+      slots.inject('contextMenu.icon', function* icons() {
+        yield slots.register({ name: 'contextMenu.icon', key: ICON_KEY }, makeIcon(h))
+      })
+    } catch (error) {
+      void error
+    }
+  }
+
+  return () => {
+    for (const dispose of disposers) {
+      if (typeof dispose === 'function') dispose()
+    }
+  }
+}
+
+/**
+ * 挂上会话右键菜单。
+ * contextMenus 是可选依赖：先直接取，取不到就等 ctx.inject 就绪后再注册。
+ */
+function mountSessionMenu(ctx, deps) {
+  // 宿主对同一个 target+id 的重复注册会抛 Duplicate menu contribution，
+  // 而 apply() 在宿主重建插件时可能被调多次，所以这里按 api 实例做一次幂等保护。
+  const api = deps ? deps.api : undefined
+  if (api && typeof api === 'object') {
+    if (MOUNTED.has(api)) return
+    MOUNTED.add(api)
+  }
+  const menus = serviceOf(ctx, 'contextMenus')
+  if (menus) {
+    install(ctx, menus, deps)
+    return
+  }
+  if (typeof ctx.inject !== 'function') return
+  try {
+    ctx.inject(['contextMenus', 'slots'], scope => {
+      const ready = serviceOf(scope, 'contextMenus')
+      if (ready) install(scope, ready, deps)
+    })
+  } catch (error) {
+    void error
+  }
+}
+
+  return {
+    serviceOf,
+    mountSessionMenu,
+  };
+})();
+
 /* ---- entry.js ---- */
 const __mod_entry = (() => {
 /**
@@ -2241,6 +3160,7 @@ const { createApi } = __mod_api;
 const { createStore } = __mod_store;
 const { makePanel } = __mod_panel;
 const { makeSettings, makeSettingsIcon } = __mod_settings;
+const { mountSessionMenu } = __mod_menu;
 const PANEL_KEY = 'mode-exchange'
 const SETTINGS_ID = 'mode-exchange'
 const PANEL_ENTRY_ID = 'mode-exchange'
@@ -2382,6 +3302,13 @@ function startModeExchangeClient(require) {
         { name: 'settings.section.icon', id: SETTINGS_ID, order: 62 },
         makeSettingsIcon(React),
       ))
+
+      /**
+       * ---- 会话右键菜单 ----
+       * 在会话列表行（session）与标题「更多」（sessionHeader）里加「切换模式」子菜单。
+       * contextMenus 是可选服务：缺席时这里静默跳过，面板与设置页不受影响。
+       */
+      mountSessionMenu(ctx, deps)
     },
   }
 }

@@ -4,6 +4,7 @@
 
 const EMPTY_STATE = {
   sessionId: null,
+  title: null,
   loading: false,
   loaded: false,
   error: null,
@@ -17,6 +18,10 @@ const EMPTY_STATE = {
   capabilities: { seedCreate: false, scopedRestrict: false, scopedPrompt: false, teamSwitch: false, attachSession: false, notes: [] },
   migrations: [],
   job: null,
+  /** 菜单发起的迁移属于哪个会话；面板据此把进度接到正确的会话上。 */
+  jobSessionId: null,
+  sessions: [],
+  workspaces: [],
 }
 
 function shallowEqualConfig(a, b) {

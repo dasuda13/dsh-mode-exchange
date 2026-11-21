@@ -5,7 +5,6 @@
  * 这个脚本不接触真实会话，只验证「接线」是否正确 —— 配合宿主里看到的
  * fiberPhase: active，可以确认插件装进去之后命令和面板后端都可用了。
  */
-import './schemastery-register.mjs'
 
 const results = []
 function check(name, condition, detail) {
@@ -137,7 +136,19 @@ const ctx = {
 // ---- 执行 apply ------------------------------------------------------------
 const mod = await import('../index.js')
 check('index.js 导出 apply 函数', typeof mod.apply === 'function')
-check('index.js 导出 Config', typeof mod.Config === 'function')
+// Config 是手写的 standard-schema v1 对象（不是 schemastery 的工厂函数）：
+// 宿主走 Config['~standard'].validate(config)，0.1.4 起插件不再有第三方依赖。
+check(
+  'index.js 导出的 Config 是 standard-schema v1',
+  typeof mod.Config === 'object' && mod.Config !== null && typeof mod.Config['~standard']?.validate === 'function',
+  JSON.stringify(Object.keys(mod.Config ?? {})),
+)
+{
+  const probe = mod.Config['~standard'].validate({ enableTeam: 'yes' })
+  check('Config 拒绝类型错误的字段', Array.isArray(probe.issues) && probe.issues[0]?.path?.[0] === 'enableTeam', JSON.stringify(probe))
+  const filled = mod.Config['~standard'].validate({})
+  check('Config 补齐六个默认值', filled.value?.confirmBeforeMigrate === true && Object.keys(filled.value ?? {}).length === 6, JSON.stringify(filled.value))
+}
 check(
   'inject 含五个必需服务',
   Array.isArray(mod.inject) && ['commands', 'agentPresets', 'agents', 'sessionQuery', 'sessionPersistence'].every((k) => mod.inject.includes(k)),
@@ -159,7 +170,7 @@ check('migrate-session 有 input.hint', typeof migrateCmd?.input?.hint === 'stri
 check('两个命令都带 handler', typeof switchCmd?.handler === 'function' && typeof migrateCmd?.handler === 'function')
 
 // ---- 路由 ------------------------------------------------------------------
-check('注册了 10 条 HTTP 路由', registeredRoutes.length === 10, `实际 ${registeredRoutes.length} 条`)
+check('注册了 12 条 HTTP 路由', registeredRoutes.length === 12, `实际 ${registeredRoutes.length} 条`)
 check(
   '路由全部挂在 /api/mode-exchange 前缀下',
   registeredRoutes.every((r) => r.path.startsWith('/api/mode-exchange')),
@@ -188,10 +199,12 @@ const expectedPaths = [
   '/api/mode-exchange/report',
   '/api/mode-exchange/archive-old',
   '/api/mode-exchange/config',
+  '/api/mode-exchange/sessions',
+  '/api/mode-exchange/workspaces',
 ]
 const actualPaths = registeredRoutes.map((r) => r.path)
 check(
-  '路由表与面板/设置页用到的 10 个端点一致',
+  '路由表与面板/设置页用到的 12 个端点一致',
   expectedPaths.every((p) => actualPaths.includes(p)),
   actualPaths.filter((p) => !expectedPaths.includes(p)).join(' ') || '全部命中',
 )

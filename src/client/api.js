@@ -81,5 +81,9 @@ export function createApi(t) {
     archiveOld: (sessionId, confirm, backup) => call(t, 'POST', '/archive-old', { sessionId, confirm, backup }),
     /** 保存插件配置。 */
     saveConfig: patch => call(t, 'POST', '/config', patch),
+    /** 会话清单（带标题、所属工作区），供面板选择器。 */
+    listSessions: () => call(t, 'GET', '/sessions'),
+    /** 工作区清单，供面板选择器。 */
+    listWorkspaces: () => call(t, 'GET', '/workspaces'),
   }
 }

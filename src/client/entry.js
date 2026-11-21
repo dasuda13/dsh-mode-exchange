@@ -15,6 +15,7 @@ import { createApi } from './api.js'
 import { createStore } from './store.js'
 import { makePanel } from './panel.js'
 import { makeSettings, makeSettingsIcon } from './settings.js'
+import { mountSessionMenu } from './menu.js'
 
 export const PANEL_KEY = 'mode-exchange'
 const SETTINGS_ID = 'mode-exchange'
@@ -157,6 +158,13 @@ export function startModeExchangeClient(require) {
         { name: 'settings.section.icon', id: SETTINGS_ID, order: 62 },
         makeSettingsIcon(React),
       ))
+
+      /**
+       * ---- 会话右键菜单 ----
+       * 在会话列表行（session）与标题「更多」（sessionHeader）里加「切换模式」子菜单。
+       * contextMenus 是可选服务：缺席时这里静默跳过，面板与设置页不受影响。
+       */
+      mountSessionMenu(ctx, deps)
     },
   }
 }

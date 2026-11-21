@@ -11,6 +11,7 @@
  *   · `<时间戳>-<短ID>.meta.json`  导出元数据：header、inheritedEventCount、计数、sha256、来源模式。
  */
 import { extname, join } from 'node:path'
+import { serviceOf } from './services.js'
 import {
   appendJsonl,
   ensureDir,
@@ -34,7 +35,7 @@ import {
  * }>}
  */
 export async function readEvents(ctx, sessionId) {
-  const query = ctx?.sessionQuery
+  const query = serviceOf(ctx, 'sessionQuery')
   if (typeof query?.readSession === 'function') {
     const result = await query.readSession(sessionId)
     if (result !== null && typeof result === 'object' && Array.isArray(result.events)) {
@@ -46,7 +47,7 @@ export async function readEvents(ctx, sessionId) {
       }
     }
   }
-  const persistence = ctx?.sessionPersistence
+  const persistence = serviceOf(ctx, 'sessionPersistence')
   if (typeof persistence?.open !== 'function') {
     throw new Error('运行时既没有 sessionQuery.readSession，也没有 sessionPersistence.open，无法读取会话日志。')
   }

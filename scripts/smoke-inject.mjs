@@ -8,7 +8,9 @@
  *   · ctx.get(x) 默认 strict —— 只返回提供方 fiber 当前活跃的实现，服务晚到就是 undefined。
  * 这个脚本就按这两条建模，避免 mock 太宽松（smoke-apply.mjs 的 ctx 会直接返回服务，测不到这个坑）。
  */
-import '../scripts/schemastery-register.mjs'
+import { readFile, readdir } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const results = []
 function check(name, condition, detail) {
@@ -72,7 +74,7 @@ store.connection = ROUTES
  *   · get(name, strict=true) 在服务未提供/未活跃时返回 undefined。
  */
 function makeCtx(options) {
-  const { injectList, provided, active, withInject } = options
+  const { injectList, provided, active, withInject, strictProps } = options
   const injections = []
   const isActive = (name) => (active ?? provided).has(name)
   const base = {
@@ -103,7 +105,10 @@ function makeCtx(options) {
     get(target, prop) {
       if (typeof prop !== 'string') return Reflect.get(target, prop)
       if (Reflect.has(target, prop)) return Reflect.get(target, prop)
-      if (injectList.includes(prop) || provided.has(prop)) return store[prop]
+      // strictProps：只让 inject 声明的服务通过属性访问，其它一律抛错。
+      // 这是真实宿主里「服务已提供、但没写进 inject」的情形 —— 也就是
+      // cannot get property "workspaceRegistry" without inject 那个 bug 的形状。
+      if (injectList.includes(prop) || (!strictProps && provided.has(prop))) return store[prop]
       throw new Error('cannot get property "' + prop + '" without inject')
     },
     has(target, prop) {
@@ -136,7 +141,7 @@ const ready = makeCtx({
   provided: new Set([...provided, 'connection']),
 })
 case1.injections[0].callback(ready.ctx)
-check('注入回调里注册了 10 条路由', sinks.routes.length === 10, '实际 ' + sinks.routes.length)
+check('注入回调里注册了 12 条路由', sinks.routes.length === 12, '实际 ' + sinks.routes.length)
 check('路由前缀正确', sinks.routes.every((r) => r.path.startsWith('/api/mode-exchange')))
 
 // ---- 场景 3：缺 configEditor 时，保存配置接口优雅降级 ----------------------
@@ -167,6 +172,83 @@ try {
 }
 check('无 connection 且无 ctx.inject 时 apply 不抛错', threw2 === null, threw2 && String(threw2.message))
 check('给出降级告警', loggerLines.some((l) => l.includes('connection')), loggerLines.filter((l) => l.includes('connection')).join(' | '))
+
+// ---- 场景 5：服务都已提供、但没写进 inject（本轮 bug 的形状） --------------
+// 真实宿主里 workspaceRegistry / tools / agentTeams 都存在，只是不在 inject 声明里。
+// Cordis 的 Proxy 对这种属性访问直接抛错，可选链挡不住 —— 这就是
+// cannot get property "workspaceRegistry" without inject 的来源。
+sinks.commands.length = 0
+sinks.routes.length = 0
+sinks.guards.length = 0
+sinks.effects.length = 0
+const strict = makeCtx({ injectList: mod.inject, provided, strictProps: true })
+let threw3 = null
+try {
+  await mod.apply(strict.ctx, {})
+} catch (error) {
+  threw3 = error
+}
+check('服务已提供但未写进 inject 时 apply 不抛错', threw3 === null, threw3 && String(threw3.message))
+check('strictProps 下 guard 仍然装上', sinks.guards.length === 1, '实际 ' + sinks.guards.length)
+check('strictProps 下命令照常注册', sinks.commands.length === 2, '实际 ' + sinks.commands.length)
+check('strictProps 下用 ctx.inject 等 connection', strict.injections.length === 1, JSON.stringify(strict.injections.map((i) => i.deps)))
+const strictReady = makeCtx({
+  injectList: [...mod.inject, 'connection'],
+  provided: new Set([...provided, 'connection']),
+  strictProps: true,
+})
+strict.injections[0].callback(strictReady.ctx)
+check('strictProps 下注入后注册 12 条路由', sinks.routes.length === 12, '实际 ' + sinks.routes.length)
+
+// ---- 静态反模式扫描：src/host 里不允许裸读可选服务 -------------------------
+const HOST_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'host')
+const SERVICE_NAMES = [
+  'tools', 'systemPrompt', 'agentTeams', 'connection', 'configEditor', 'workspaceRegistry',
+  'sessionTitle', 'agentDefaultModel', 'userQuestions', 'sessions', 'workspaces',
+  'commands', 'agentPresets', 'agents', 'sessionQuery', 'sessionPersistence',
+]
+const violations = []
+for (const name of await readdir(HOST_DIR)) {
+  if (!name.endsWith('.js')) continue
+  const text = await readFile(join(HOST_DIR, name), 'utf8')
+  text.split('\n').forEach((line, index) => {
+    const trimmed = line.trim()
+    if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) return
+    const pattern = /(^|[^.\w])ctx\??\.([A-Za-z_$][\w$]*)/g
+    let hit
+    while ((hit = pattern.exec(line)) !== null) {
+      if (SERVICE_NAMES.includes(hit[2])) violations.push(`${name}:${index + 1} ${trimmed}`)
+    }
+  })
+}
+check('src/host 里没有裸 ctx.<服务> 访问', violations.length === 0, violations.slice(0, 4).join(' | '))
+
+// 扫描器自检：确保它真的能抓到反模式（而不是恒为空）。
+function scanText(text) {
+  const found = []
+  text.split('\n').forEach((line, index) => {
+    const trimmed = line.trim()
+    if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) return
+    const pattern = /(^|[^.\w])ctx\??\.([A-Za-z_$][\w$]*)/g
+    let hit
+    while ((hit = pattern.exec(line)) !== null) {
+      if (SERVICE_NAMES.includes(hit[2])) found.push(`bad.js:${index + 1} ${trimmed}`)
+    }
+  })
+  return found
+}
+const selfBad = [
+  'const registry = ctx?.workspaceRegistry',
+  'const tools = ctx.tools ?? ctx.get("tools")',
+  'const teams = ctx.agentTeams',
+].join('\n')
+const selfGood = [
+  '// 直接写 ctx?.workspaceRegistry 会被 Cordis 的注入检查抛错。',
+  'const registry = serviceOf(ctx, "workspaceRegistry")',
+  'const dispose = agent.ctx.tools.restrict({ deny })',
+].join('\n')
+check('反模式扫描器能抓到 ctx?.workspaceRegistry 这类写法', scanText(selfBad).length === 3, scanText(selfBad).join(' | '))
+check('反模式扫描器不误报注释与 agent 作用域', scanText(selfGood).length === 0, scanText(selfGood).join(' | '))
 
 let failed = 0
 for (const r of results) {

@@ -22,9 +22,204 @@
   （远端 Initial commit 与本地无共同历史），支持 `-DryRun` / `-NoForce` / 身份参数。
 - 新增 `docs/PUBLISH.md`：三条发布路径（REST 推送器 / git 脚本 / 网页上传）、PAT 权限、
   认证方式与本机特有的 schannel、代理、换行符等报错对照表。
+- 新增 `scripts/publish-npm.ps1`：一键发布到 npm registry。六步（定位 npm → 检查登录 →
+  构建与冒烟 → `npm pack --dry-run --json` 校验真实打包清单与 icon 体积 → 版本查重 →
+  `npm publish --access public`），支持 `-Version` / `-Tag` / `-Otp` / `-DryRun` / `-SkipTests`。
+  定位 npm 时优先 `npm.cmd`（避免 `npm.ps1` 包装器的 stderr 噪声），读 JSON 时强制 UTF-8
+  （PS 5.1 的 `Get-Content` 会按 ANSI 解码，把中文 description 读成乱码）。
+- `docs/PUBLISH.md` 增补「方案 D：发布到 npm」：`npm login`、脚本六步对照表、手敲版命令、
+  发布后验证、升级版本、发布报错对照表，以及可选的插件索引源（`format: 1` JSON）示例。
+- `README.md` 安装章节区分「从 npm 装」与「从本地目录装」。
+- `scripts/publish-npm.ps1` 修三处首次真发暴露的问题：
+  ① npm 的 `notice` 走 stderr，PS 5.1 把 `2>&1` 重定向的每条 stderr 都渲染成
+  `NativeCommandError` 刷屏、真实报错被淹没 —— 改为临时 `.cmd` 包裹 + 文件重定向再按 UTF-8 读回，
+  成功时只打印 `+ pkg@version` 之类的关键行；
+  ② 失败提示按真实原因分支，把「E403 + 2FA」从「包名被占用」里拆出来，给出验证码与
+  bypass-2fa token 两条具体路径；
+  ③ 撞上 2FA 错误后当场 `Read-Host` 问 6 位验证码（验证码 30 秒过期，先问再发必然过期），
+  拿到就立即重试一次；
+  另修中文输出在 GBK 控制台显示成「浜х墿鏄渶鏂扮殑」的乱码（`[Console]::OutputEncoding = UTF8`）。
+- `docs/PUBLISH.md` 新增「6.5 开了 2FA 怎么发」：报错原文、办法 A（脚本当场问码 /
+  `-Otp`）、办法 B（granular access token 勾 Bypass 2FA 的五步 + 安全提醒），
+  并把报错对照表里 `E403` 拆成「2FA」与「名称/版本冲突」两行。
+- 新增 `scripts/publish-npm.cmd`：`publish-npm.ps1` 的免策略包装器。Windows 默认
+  `RemoteSigned` 会拦下未签名的本地 `.ps1`（报「未对文件 … 进行数字签名」），
+  包装器用 `-ExecutionPolicy Bypass` 起一次性子进程，参数原样透传，不改系统策略。
+  文件内容保持纯 ASCII —— cmd.exe 按 OEM 代码页（中文系统是 936）读批处理，
+  UTF-8 中文注释会被拆成可执行行的错误输出。
+- `docs/PUBLISH.md` 补「别直接敲 `.\scripts\publish-npm.ps1`」的提示与 `.cmd` 用法，
+  报错对照表新增「未对文件 … 进行数字签名 / `UnauthorizedAccess`」一行。
+- `scripts/publish-npm.ps1` 新增 `-Bump`：当前版本已在 npm 上时自动升一个补丁号
+  （`0.1.0 → 0.1.1`，预发布版先落回正式号）再发，省掉「发布→被拦→手动 `npm version`→再发」
+  的一轮往返；不加该开关时仍只打印三选一提示、不改 `package.json`。
+- `docs/PUBLISH.md` 的「升级版本」与参数示例补 `-Bump`，六步表中的 5/6 说明同步。
 
+### 新增
+
+- **右键菜单也能「迁移重建」**（0.1.7）：之前右键只有软切换，而「没有活着的 Agent」「已归档」
+  这类会话恰恰是软切换做不了、只能迁移重建的 —— 用户只能先点进面板、切到「迁移重建」页签、
+  选模式、再确认一次。现在会话右键菜单里多了一条「迁移重建」二级菜单，展开就是所有模式，
+  点一下直接发起迁移，不用离开左侧会话列表。
+  - 与「切换模式」并列成两条独立贡献（`mode-exchange.migrate`，order 351），
+    同样覆盖 `session` 与 `sessionHeader` 两个 target，所以会话行和标题「更多」菜单里都能看到。
+  - **不看 `switchable`**：切换入口在「没有活 Agent / 已归档 / 子代理」时会全部置灰，
+    迁移入口在这些情况下仍然可点 —— 这正是它存在的意义。只有模式本身装配失败（`broken`）才置灰。
+  - **当前模式也可选**：迁移的常见用法是「同一个模式重建一遍」（清掉坏的运行态），
+    所以不像切换那样把当前模式标灰，只在标签后加「（当前）」。
+  - 菜单里没法弹二次确认框，所以点模式即视为确认（`confirmDelete: true` 越过台账对同一会话的
+    幂等拦截）；其余参数一律取设置页里配好的默认值（归档旧会话 / 团队协作 / 保留导出副本），
+    不在菜单里另开入口。
+  - 发起后把 `jobId` 写进面板 store（新增 `jobSessionId` 记住归属会话），面板一打开就自动
+    切到这条会话的「迁移重建」页签并接着轮询进度；提示条还带一个「查看进度」按钮，
+    点了直接选中本插件面板（`layout.selectPanel('mode-exchange')`），布局服务缺席时静默降级。
+  - 迁移进行中所有模式叶子置灰并多一条「迁移进行中…」说明，防止重复点发起第二次。
+    标记写进菜单快照而不是模块级变量，这样 `observe` 会触发重新解析，菜单下次打开就是灰的。
+  - `scripts/smoke-menu.mjs` 扩到 A–H 十组场景（新增迁移参数取配置、`jobId` 交接、
+    「查看进度」跳转、迁移中禁用与恢复、不可切换的会话仍可迁移两段）；
+    `scripts/smoke-render.mjs` 的断言改为「两个入口 × 两个 target = 四条贡献」。
+  - 新增 `scripts/smoke-handoff.mjs`（并入 `npm run smoke`，现共九套）：菜单与面板之间只靠
+    store 里的 `{ job, jobSessionId }` 交接，这里用真实面板组件 + 手写 React 桩把整条链路跑一遍 ——
+    面板停在 A 会话、菜单在 B 会话发起迁移时，面板要先切到 B 再接管任务，
+    自动落到「迁移重建」页签开始轮询，任务跑完后清掉待接管标记。
+    桩里 `setInterval` 换成了手动队列，否则定时器会把进程吊住、也测不到多轮轮询后的状态。
+
+- **在会话上右键即可切换模式**（0.1.6）：宿主左侧会话列表的右键菜单里新增「切换模式」二级菜单，
+  展开就是所有可用 Agent 模式，当前模式标「（当前）」并置灰、加载失败的 preset 置灰、
+  点一下即完成软切换（等价于面板里的「应用切换」），结果通过宿主菜单的 toast 反馈
+  （「已切换到「X」模式」/「切换失败：原因」）。会话不可切换时菜单里直接写出原因
+  （没有活着的 Agent、已归档、子代理会话等），不再让人点进面板才发现点不动。
+  - 实现是新模块 `src/client/menu.js`：向宿主的 `contextMenus` 服务注册两个 target ——
+    `session`（会话行）与 `sessionHeader`（会话标题的「更多」菜单，带分隔线），
+    order 取 350，正好落在宿主的「创建分支」(300) 与「复制会话 ID」(450) 之间；
+    id 用 `mode-exchange.switch`，不会和宿主内置菜单撞名。
+  - **解析必须是同步的**：宿主给每个菜单贡献 1000ms 的解析超时，超时就弹「加载失败」。
+    所以模式清单与会话状态都在后台预取进闭包缓存（15 秒内复用），
+    `resolve` 只读缓存拼菜单；冷启动时先给一条禁用的「正在读取模式…」占位项，
+    刷新完成后下次打开右键菜单就变成可用列表。
+  - **降级不拖垮插件**：`contextMenus` 没有写进 `inject` 列表，而是用
+    `ctx.inject(['contextMenus'], …)` 等它就绪 —— 这是宿主 `dsh-client-ui-file-actions` 的官方写法。
+    服务缺席（旧宿主 / 精简构建）时面板、设置页、命令照常工作，只是没有右键菜单。
+  - 切换成功后会同步面板 store：如果改的正是面板当前打开的会话，
+    面板上的「生效模式」立刻跟着变，不用重新拉一遍。
+  - 注册失败不会连累插件：宿主对同一 target+id 抛 `Duplicate menu contribution`，
+    这里把 `register` 包在 try/catch 里 —— 菜单缺席，但面板、设置页、命令照常。
+  - 新增 `scripts/smoke-menu.mjs`（A–H 八组场景）并并入 `npm run smoke`：
+    用与宿主 `registry.ts` 同构的桩跑「注册 → 解析 → 选中 → 执行」，
+    覆盖常规、不可切换、切换失败、缺 contextMenus、就绪后补注册、状态接口失败、
+    重复挂载幂等、宿主拒绝注册八条路径，并断言 `resolve` 不许返回 Promise。
+  - `scripts/smoke-render.mjs` 补 `contextMenus` 桩与断言：
+    `apply()` 之后必须注册 `session` 与 `sessionHeader` 两个 target。
+- **面板不再只显示一串 session 编码**：用户无法从 `session-01a4…` 认出这是哪个对话。
+  现在「当前会话状态」卡片的第一行是**会话标题**，短 id 退到第二行「会话 ID」并保留等宽字体；
+  标题取自宿主客户端的 `sessions.list` 快照（`SessionSummary.displayTitle`），
+  也就是左侧会话列表用的同一套回退链（durable title → 项目目录名 → id），和用户看到的名字完全一致。
+  后端 `GET /state` 一直有返回 `title`，但面板从未把它写进 store —— 本条一并补上。
+- **「模式切换」与「迁移重建」新增可折叠的「选择会话」窗口**：
+  原本面板只能操作「当前打开的那个会话」，想切别的会话得先在左侧列表点进去。
+  现在两个页签顶部各有一个 `details` 折叠选择器，展开后列出会话清单，
+  每行是「标题 + 所属工作区名 · 短 id（· 运行中 / 已归档）」三级信息，当前项高亮并可一键关闭。
+  默认值就是用户点进面板前最后停留的会话（宿主主视图会话），**不会把人从当前对话挪走**；
+  只有宿主给不出主视图会话时才退回清单第一条。换会话会清掉上一个会话的切换/迁移结果，
+  避免把旧结论套到新会话上。
+- **「迁移重建」新增可折叠的「选择工作区」窗口**：新会话默认加入目标会话所在的工作区；
+  会话没有归属时退回工作区清单第一条。选择器显示「工作区名 + 磁盘路径」，
+  用户手动选过之后就不再被自动推断覆盖。
+- **迁移目标工作区真正落到宿主侧**：新增 `src/host/roster.js` 聚合会话与工作区清单；
+  `POST /migrate` 接受 `workspaceId`，`startMigration` 用它解析出目标 `cwd`（优先于源会话 cwd），
+  `attachToWorkspace` 先按 id 精确挂载、失败再退回 0.1.4 的「按目录猜」逻辑；
+  报告里 `target.workspaceId` / `target.workspaceTitle` 只在用户选了工作区时出现，
+  没选时报告形状与 0.1.4 完全一致。
+- **两条新 HTTP 路由**：`GET /api/mode-exchange/sessions`（会话清单：id / 标题 / cwd /
+  所属工作区 / 运行态 / 归档态，默认最多 60 条，可选 `?limit=`）与
+  `GET /api/mode-exchange/workspaces`（工作区清单：id / 标题 / 路径 / 会话列表）。
+  两条都先做同源校验，服务缺失时降级为空清单而不是报错。
+- `src/host/services.js` 的 `sessionTitleOf` 修正：宿主 `sessionTitle.get()` 要的是
+  **Session 实例而不是 sessionId**，此前传 id 进去永远拿到 `undefined`，
+  这才是面板只能显示短 id 的根因。现在先 `sessions.get(id)` 再 `sessionTitle.get(session)`，
+  并兼容返回 `string` 与 `{ title }` 两种形状。
+- 新增 `SessionBrief` / `WorkspaceBrief` 类型声明；`MigrateRequest` 与 `MigrationReport.target`
+  补上可选的 `workspaceId` / `workspaceTitle`。
+- `scripts/smoke-inject.mjs` / `scripts/smoke-apply.mjs` 的路由数断言同步到 12 条，
+  `smoke-inject` 的裸服务名扫描列表补上 `workspaces`。
 ### 修复
 
+- **本地 link 安装的插件在重启后完全加载不起来**（0.1.4）：
+  现象是插件管理器里显示「启用中」、组件却「未运行」，侧栏面板、设置页、命令、路由
+  全部消失，红字只写「启动时没能加载」而不给原因。根因与业务代码无关：
+  `src/host/config.js` 顶层 `import z from '@deepseek-ai/schemastery'`，
+  而插件是以**符号链接**装进 profile 的（`dependencies` 里是
+  `link:C:/.../plugin-create-mode`）。Node 按 realpath 解析，于是从仓库目录往上找
+  `node_modules`，永远看不到 profile 里那份 schemastery；仓库一旦没有 `node_modules`
+  （它本来就在 `.gitignore` 里），`import` 期即抛 `ERR_MODULE_NOT_FOUND`，
+  `apply` 根本没执行。
+  - 现在彻底删掉这条依赖：`Config` 改为手写的 standard-schema v1 对象
+    （`{ '~standard': { version: 1, vendor: 'dsh-mode-exchange', validate } }`），
+    带六个字段的类型校验与中文报错（如 `enableTeam 必须是布尔值`），通过后仍走
+    `normalizeConfig` 补默认值。宿主 `resolveConfig` 只认 standard-schema
+    （见 `.refs/cordis-fiber.ts` 的 `runtime.Config['~standard'].validate(config)`），
+    不要求是 schemastery；代价仅是 `cordis_inspect` 的 JSON Schema 投影显示
+    `unsupported`，不影响激活、`apply` 与配置校验。
+  - `package.json` 删掉整个 `dependencies` 块（现在是零第三方运行时依赖），
+    同步删除 `pnpm-lock.yaml` 与两个已无用的解析钩子
+    （`scripts/schemastery-loader.mjs` / `scripts/schemastery-register.mjs`），
+    四个 smoke 脚本里的 `import './schemastery-register.mjs'` 一并去掉。
+  - `scripts/smoke-apply.mjs` 的断言跟着改：不再要求 `Config` 是函数，改为校验它是
+    standard-schema 且 `validate` 会拒绝类型错误的字段、补齐六个默认值。
+  - 新增 `scripts/smoke-imports.mjs`（已并入 `npm run smoke` 第一项）：静态扫描
+    `index.js` 与 `src/host/*.js`，宿主侧代码只允许相对导入与 `node:` 内置模块，
+    把「符号链接安装 + 裸包名」这个故障挡在提交前；扫描器自带自检
+    （能抓到动态 `import()` 的裸包名、不误报注释与 URL），避免「恒空即通过」。
+  - 验证方式是按宿主的真实加载路径复现：从 profile 的符号链接位置 import
+    `index.js`，修前 `ERR_MODULE_NOT_FOUND`、修后
+    `IMPORT OK [ 'Config', 'apply', 'describeSession', 'inject' ]`。
+  - `docs/LOCAL-DEV.md` 的先决条件段与 `README.md` 的许可段同步写明
+    「没有第三方运行时依赖、不需要仓库里有 `node_modules`」。
+
+- **迁移的「导入」复核会撒谎，也会在慢盘上误杀**（0.1.3）：
+  `verifyImport` 原来有两个隐患，一个报假成功、一个报假失败：
+  - 拿不到 `sessionPersistence` 时直接 `return { ok: true, eventCount: expectedEventCount }`，
+    报告里于是写着「1865 条原生事件已落盘」，而其实一个字都没读回来过 —— 这就是
+    历史报告全是「第 4 步失败但 `imported: true` / `importedEventCount: 1865`」的来源；
+    现在没有持久层一律判 `ok: false`，理由写清「无法确认新会话是否真的落盘」。
+  - 宿主的 jsonl 后端是**惰性物化**的：`persistence.create()` 只在内存里登记，
+    真正的文件要到首次 append/flush 才出现；命中的还是未物化句柄时，
+    `read()` 会回 `{ eventState: 'detached', events: [] }`。旧代码把这 0 条当成
+    「落盘失败」立刻判死。现在先看 `eventState`，再用 `stat()` 是否给出
+    `location` / `sizeBytes` 区分「真落盘」与「只是登记」，并最多重试 3 次
+    （间隔 `yieldToLoop(150)`）；只有始终没物化才判失败，且理由写明「尚未物化」。
+  - `scripts/smoke-migrate.mjs` 相应补三个场景：D 前两次读回 detached、重试后仍成功；
+    E 一直不物化必须判失败（不许假成功）；F 持久层没有 `open` 必须判失败。
+- **迁移卡在第 4 步：`cannot get property "workspaceRegistry" without inject`**：
+  迁移的四步（导入日志为历史上下文）已经成功、新会话也建好了，但紧接着的「挂载到工作区」
+  在读取 `ctx?.workspaceRegistry` 时抛错 —— Cordis 的 `ctx` 是 Proxy，服务只要没写在本插件的
+  `inject` 里，**属性访问本身**就抛异常，可选链 `?.` 挡不住（它只拦 null/undefined）。
+  异常沿 `runJob` 冒到 catch，整次迁移被判失败（`target.attachedToWorkspace` 仍是 false），
+  用户于是看到「第 4 步失败」却有一个已创建的新会话。现在：
+  - 所有「可选服务」统一走 `serviceOf(ctx, name)`（非 strict 读 store + try/catch 包住属性访问）：
+    `migrate.js` 的 `agents` / `agentPresets` / `sessionPersistence` / `agentDefaultModel` /
+    `workspaceRegistry` / `agentTeams`，`export.js` 的 `sessionQuery` / `sessionPersistence`，
+    `modes.js` 与 `switch.js` 的 `agentPresets`，`guard.js` 的 `tools`；
+  - `migrate.js` 的「挂载工作区 / 启用团队 / 归档旧会话」三步各自再包一层 try/catch，
+    失败只把对应 timeline 项标为未完成，**不再把整次迁移判失败**（新会话已经可用）；
+  - `index.js` 新增 `installGuardWhenReady`：`tools` 就绪就直接装 guard，
+    没就绪就 `ctx.inject(['tools'], …)` 等它出现 —— 此前 `installGuard` 在真实宿主里
+    每次都在属性访问处抛错、被 catch 吞成空操作，**`tools.guard` 实际上从未装上**，
+    软切换的工具拦截一直是失效的；
+  - `probeCapabilities` 只缓存「五项能力全为真」的正结果：`apply` 阶段 `tools` /
+    `agentTeams` / `workspaceRegistry` 常常还没就绪，负结果一旦被 WeakMap 记住，
+    插件就会永远停在降级路径上。
+- 新增 `scripts/smoke-migrate.mjs`：用「像 Cordis」的 mock ctx（未写在 inject 里的服务，
+  属性访问一律抛错）真跑七步迁移，覆盖三种情形 —— 一切正常 / 挂载工作区失败 / 团队与归档失败，
+  断言后两种仍然 `ok: true`。脚本开头先自检 mock 会抛错、`serviceOf` 能安全读到，
+  避免模型失真导致「假通过」。
+- `scripts/smoke-inject.mjs` 新增「场景 5：服务都已提供、但没写进 inject」与静态反模式扫描：
+  逐行扫 `src/host/*.js`，出现 `ctx.<服务名>` / `ctx?.<服务名>`（除注释与 `agent.ctx` 外）即失败；
+  扫描器自带正例/反例自检，防止规则写坏了恒为空。
+- `package.json` 增加 `npm run smoke`（依次跑六个冒烟脚本），版本升到 `0.1.2`、`0.1.3`。
+- **`scripts/publish-npm.ps1` 编辑后整篇报语法错**：文件原本带 UTF-8 BOM，用文本编辑工具
+  改写时 BOM 被丢掉，PowerShell 5.1 于是按 ANSI(936) 解码中文注释，报出一串
+  「表达式或语句中包含意外的标记 `}`」这类与内容无关的错误。已恢复 BOM，
+  并在文档里记下「改带中文的 `.ps1` 后要检查文件头仍是 `EF BB BF`」。
 - **插件在宿主里被标成「异常」：`cannot get property "connection" without inject`**：
   `src/host/routes.js` 用 `ctx.get('connection') ?? ctx.connection` 取 Web 宿主服务。
   真实 Cordis 里，服务只要没在本插件的 `inject` 里声明，属性访问就会直接抛

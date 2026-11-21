@@ -16,6 +16,8 @@
  *   GET  /report?reportId=     单份迁移报告
  *   POST /archive-old          { sessionId, confirm, backup }
  *   POST /config               { patch } 写入插件配置（持久化）
+ *   GET  /sessions             可切换/可迁移的会话清单（带标题，供面板选择器）
+ *   GET  /workspaces           工作区清单（供面板选择器）
  *
  * 所有 handler 都做了同源校验：只接受来自 Harness 自身页面的请求。
  */
@@ -23,6 +25,7 @@ import { createLogger } from './util.js'
 import { switchMode, revertMode, switchState } from './switch.js'
 import { archiveOld, cancelJob, history, jobStatus, report, startMigration } from './migrate.js'
 import { serviceOf, sessionCwd, sessionTitleOf } from './services.js'
+import { listSessionBriefs, listWorkspaceBriefs } from './roster.js'
 import { normalizeConfig } from './config.js'
 
 /** 路由前缀。 */
@@ -204,6 +207,7 @@ export function installRoutes(ctx, deps) {
             deleteOld: body.deleteOld === true,
             team: body.team === true,
             note: typeof body.note === 'string' && body.note.length > 0 ? body.note : undefined,
+            workspaceId: typeof body.workspaceId === 'string' && body.workspaceId.length > 0 ? body.workspaceId : undefined,
             config: baseConfig,
             capabilities,
             force: body.confirmDelete === true,
@@ -349,6 +353,40 @@ export function installRoutes(ctx, deps) {
           return ok({ saved: true, restarting: true, config: next })
         } catch (error) {
           return fail('config-failed', error instanceof Error ? error.message : String(error))
+        }
+      },
+    },
+
+    // ------------------------------------------------------------ 会话清单
+    //
+    // 面板要让人「按标题认会话」，而 SessionHeader 里没有标题字段；
+    // 标题在这条路由里用 sessionTitle 服务补齐（见 roster.js）。
+    {
+      path: `${ROUTE_PREFIX}/sessions`,
+      methods: ['GET'],
+      requestBody: 'buffered',
+      fetch: async request => {
+        try {
+          const limitRaw = Number(queryValue(request, 'limit'))
+          const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 200) : undefined
+          const items = await listSessionBriefs(ctx, limit === undefined ? {} : { limit })
+          return ok({ items })
+        } catch (error) {
+          return fail('sessions-failed', error instanceof Error ? error.message : String(error))
+        }
+      },
+    },
+
+    // ------------------------------------------------------------ 工作区清单
+    {
+      path: `${ROUTE_PREFIX}/workspaces`,
+      methods: ['GET'],
+      requestBody: 'buffered',
+      fetch: async () => {
+        try {
+          return ok({ items: listWorkspaceBriefs(ctx) })
+        } catch (error) {
+          return fail('workspaces-failed', error instanceof Error ? error.message : String(error))
         }
       },
     },

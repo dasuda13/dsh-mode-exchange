@@ -118,6 +118,9 @@ export interface MigrationReport {
     imported: boolean
     importedEventCount: number
     attachedToWorkspace: boolean
+    /** 面板指定了目标工作区时才会出现。 */
+    workspaceId?: string
+    workspaceTitle?: string
   }
   log: {
     path: string
@@ -177,12 +180,38 @@ export type ApiEnvelope<T> =
 /** POST /api/mode-exchange/migrate 的请求体。 */
 export interface MigrateRequest {
   sessionId: string
+  /** 新会话要落进哪个工作区（面板「选择工作区」）。不传则沿用源会话的目录。 */
+  workspaceId?: string
   mode: string
   deleteOld: boolean
   team: boolean
   note?: string
   /** 用户已在对话框里确认归档旧会话。 */
   confirmDelete?: boolean
+}
+
+/** GET /api/mode-exchange/sessions 的列表项（面板「选择会话」用）。 */
+export interface SessionBrief {
+  id: string
+  /** 展示用标题：durable title → 工作目录名 → 会话 id。 */
+  title: string
+  cwd: string | null
+  /** 所属工作区 id（不在任何工作区时为 null）。 */
+  workspaceId: string | null
+  createdAt: number | null
+  live: boolean
+  persisted: boolean
+  running: boolean
+  archived: boolean
+}
+
+/** GET /api/mode-exchange/workspaces 的列表项（面板「选择工作区」用）。 */
+export interface WorkspaceBrief {
+  id: string
+  title: string
+  path: string
+  sessionIds: string[]
+  createdAt: number | null
 }
 
 /** POST /api/mode-exchange/archive-old 的请求体。 */
