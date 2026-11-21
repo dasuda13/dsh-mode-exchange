@@ -197,6 +197,26 @@ $env:GIT_TERMINAL_PROMPT = $null
 脚本会依次探测 `7897` / `7890` / `10809` / `10808` / `1080` / `8889` / `8080`，
 找到在监听的就让 git 走它；一个都没有才尝试直连。
 
+#### 一劳永逸：把代理写进 git config
+
+不想每次都靠脚本探测，就给这个仓库配一次（只影响本仓库，不改全局）：
+
+```powershell
+$git = "C:\Program Files\Git\cmd\git.exe"
+& $git config --local http.proxy http://127.0.0.1:7897
+& $git config --local --get http.proxy     # 确认写进去了
+```
+
+配好之后**普通的 `git push` / `git fetch` 就直接走代理**，不用再加 `-c`。
+本仓库已经配好这一项。注意两点：
+
+- 代理客户端（Clash 之类）必须开着，否则 git 会卡在连本地端口上；
+  临时要直连就用 `\scripts\push-retry.cmd -NoProxy`，它用 `-c http.proxy=` 覆盖掉这条配置。
+- 想撤销：`& $git config --local --unset http.proxy`。
+
+`push-retry` 也会读这条配置（显示成 `proxy  : ... (git config)`），所以脚本和手动推送
+的行为是一致的；找不到配置才回去探测端口。
+
 还不行再用下面三种判断手段，从便宜到贵（都是只读探测，不动仓库）：
 
 ```powershell

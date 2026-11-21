@@ -80,6 +80,11 @@
 - `docs/PUBLISH.md` 的「网络不稳」一节改写成「先判断是地址不对还是这条路不通」：
   给出三个边缘节点的握手实测对照表、代理验证命令、假凭据探针，并写明
   `http.curloptResolve` 与 `http.proxy` 不能同时用（会报 `Unsupported SSL backend`）。
+- `scripts/push-retry.ps1` 改为**优先用 git config 里的 `http.proxy`**（显示 `(git config)`），
+  没有再自动探测端口；`-NoProxy` 现在会用 `-c http.proxy=` 真正覆盖掉仓库级配置（之前只是不探测，
+  配置里的代理仍然生效）；`-Proxy` 指定的端口没人监听时给出提醒。
+- `docs/PUBLISH.md` 新增「一劳永逸：把代理写进 git config」：`git config --local http.proxy`
+  的配法、验证、撤销，以及「代理客户端必须开着」「临时直连用 `-NoProxy`」两个注意事项。
 
 ### 新增
 

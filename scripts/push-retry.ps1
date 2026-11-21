@@ -1,36 +1,40 @@
 <#
 .SYNOPSIS
-    Push the current branch, retrying when the link to GitHub gets reset.
+    Push the current branch, retrying when the link to GitHub is flaky.
 .DESCRIPTION
-    On this machine the link to github.com fails intermittently. Two causes show
-    up, and the script handles both:
+    Two things make 'git push' fail on this machine:
 
-      1. The resolver hands out a GitHub edge address that accepts a TCP
-         connection and then stalls the TLS handshake, so git waits ~21 s and
-         ends with "Recv failure: Connection was reset". Flushing the DNS cache
-         may hand out a different address, so that is tried between attempts.
-      2. The direct route to that edge node is simply down. A local HTTP proxy
-         (Clash and friends listen on 127.0.0.1) usually gets through, so the
-         script looks for one and routes git through it when it is found.
+      1. DNS hands out a GitHub edge address that accepts the TCP connection
+         and then stalls the TLS handshake, so git waits ~21 s and reports
+         "Recv failure: Connection was reset".
+      2. A direct route to that address may simply be blocked, while a local
+         proxy gets through in about a second.
+
+    The script therefore prefers a proxy: an explicit -Proxy, otherwise
+    http.proxy from git config, otherwise the first local port that answers
+    among 7897 / 7890 / 10809 / 10808 / 1080 / 8889 / 8080. Between attempts
+    it also flushes the DNS cache, which is what fixes case 1.
 
     It does NOT force-push, does NOT commit, does NOT touch the remote URL.
-    It only runs: git push origin <branch>
+    It only runs: git push <remote> <branch>
 .PARAMETER Remote
     Remote name. Defaults to origin.
 .PARAMETER Branch
     Branch to push. Defaults to the current branch.
 .PARAMETER Attempts
     How many times to try before giving up. Defaults to 6.
+.PARAMETER Proxy
+    Use this proxy, e.g. http://127.0.0.1:7897. Skips detection.
+.PARAMETER NoProxy
+    Go direct even when git config or a listening port suggests a proxy.
 .PARAMETER DryRun
     Print what would happen and exit without touching the network.
-.PARAMETER Proxy
-    HTTP proxy URL to use, e.g. http://127.0.0.1:7897. Default: auto-detect.
-.PARAMETER NoProxy
-    Never use a proxy, even if one is listening.
 .EXAMPLE
     .\scripts\push-retry.cmd
 .EXAMPLE
     .\scripts\push-retry.cmd -Attempts 10
+.EXAMPLE
+    .\scripts\push-retry.cmd -NoProxy
 .EXAMPLE
     powershell -NoProfile -ExecutionPolicy Bypass -File scripts\push-retry.ps1 -DryRun
 #>
@@ -39,7 +43,7 @@ param(
     [string]$Remote   = 'origin',
     [string]$Branch   = '',
     [int]$Attempts    = 6,
-    [string]$Proxy     = '',
+    [string]$Proxy    = '',
     [switch]$NoProxy,
     [switch]$DryRun
 )
@@ -78,14 +82,25 @@ function Test-LocalPort([int]$Port) {
     }
 }
 
-# Clash / V2Ray / Shadowsocks clients all listen on a local HTTP proxy port.
-# Probing them is cheap, and routing git through one is what actually works
-# when the direct route to the GitHub edge node is black-holed.
 function Find-LocalProxy {
     foreach ($port in @(7897, 7890, 10809, 10808, 1080, 8889, 8080)) {
         if (Test-LocalPort $port) { return ('http://127.0.0.1:' + $port) }
     }
     return $null
+}
+
+# A repo may already carry http.proxy; honour it so this script and a plain
+# 'git push' behave the same way.
+function Get-ConfiguredProxy {
+    $value = (& $gitExe config --get http.proxy 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) { return '' }
+    return $value
+}
+
+function Get-PortFromProxy([string]$Url) {
+    if (-not $Url) { return 0 }
+    if ($Url -match ':([0-9]+)/?$') { return [int]$Matches[1] }
+    return 0
 }
 
 function Get-RemoteHost([string]$Name) {
@@ -106,8 +121,8 @@ function Get-ResolvedAddress([string]$Name) {
     }
 }
 
-# The address in the DNS cache is what git keeps failing on, so drop it and show
-# what the resolver picks next time.
+# The cached address is what git keeps failing on, so drop it and show what the
+# resolver picks next time.
 function Reset-DnsCache([string]$Name) {
     if (-not $Name) { return }
     $before = Get-ResolvedAddress $Name
@@ -146,16 +161,36 @@ Write-Host "repo   : $Root" -ForegroundColor DarkGray
 Write-Host "git    : $gitExe" -ForegroundColor DarkGray
 Write-Host "branch : $Branch" -ForegroundColor DarkGray
 Write-Host "HEAD   : $head" -ForegroundColor DarkGray
-$proxyUrl = ""
-if (-not $NoProxy) {
-    if ($Proxy) { $proxyUrl = $Proxy } else { $proxyUrl = Find-LocalProxy }
-}
-if ($proxyUrl) {
-    Write-Host "proxy  : $proxyUrl" -ForegroundColor DarkGray
-} elseif ($NoProxy) {
-    Write-Host "proxy  : disabled (-NoProxy)" -ForegroundColor DarkGray
+
+$proxyUrl = ''
+$proxySource = ''
+if ($NoProxy) {
+    # -NoProxy wins over everything, including http.proxy already in git config.
+} elseif ($Proxy) {
+    $proxyUrl = $Proxy
+    $proxySource = '-Proxy'
 } else {
-    Write-Host "proxy  : none listening (trying a direct connection)" -ForegroundColor DarkGray
+    $configured = Get-ConfiguredProxy
+    if ($configured) {
+        $proxyUrl = $configured
+        $proxySource = 'git config'
+    } else {
+        $proxyUrl = Find-LocalProxy
+        if ($proxyUrl) { $proxySource = 'auto-detected' }
+    }
+}
+
+if ($NoProxy) {
+    Write-Host 'proxy  : disabled (-NoProxy)' -ForegroundColor DarkGray
+} elseif ($proxyUrl) {
+    Write-Host "proxy  : $proxyUrl ($proxySource)" -ForegroundColor DarkGray
+    $proxyPort = Get-PortFromProxy $proxyUrl
+    if ($proxyPort -gt 0 -and -not (Test-LocalPort $proxyPort)) {
+        Write-Host "  nothing is listening on port $proxyPort - start your proxy client first." -ForegroundColor Yellow
+        Write-Host '  or pass -NoProxy to go direct, or -Proxy <url> to use another one.' -ForegroundColor Yellow
+    }
+} else {
+    Write-Host 'proxy  : none configured, trying a direct connection' -ForegroundColor DarkGray
 }
 
 $remoteHost = Get-RemoteHost $Remote
@@ -173,17 +208,22 @@ Write-Host "ahead  : $ahead commit(s)" -ForegroundColor DarkGray
 
 if ($DryRun) {
     Write-Host ''
-    $via = ""
-    if ($proxyUrl) { $via = " (via $proxyUrl)" }
+    $via = ''
+    if ($NoProxy) { $via = ' (no proxy)' }
+    elseif ($proxyUrl) { $via = " (via $proxyUrl)" }
     Write-Host ("[dry run] would run: git push $Remote $Branch" + $via) -ForegroundColor Yellow
     exit 0
 }
 
+# -c has to come before the subcommand, so build the config args separately.
 $pushArgs = @('push', $Remote, $Branch)
-if ($proxyUrl) {
-    # -c has to come before the subcommand, so build the config args separately.
+if ($NoProxy) {
+    # An empty value overrides http.proxy from git config for this one command.
+    $pushArgs = @('-c', 'http.proxy=', 'push', $Remote, $Branch)
+} elseif ($proxyUrl) {
     $pushArgs = @('-c', ('http.proxy=' + $proxyUrl), 'push', $Remote, $Branch)
 }
+
 for ($i = 1; $i -le $Attempts; $i++) {
     Write-Host ''
     Write-Host ('attempt ' + $i + '/' + $Attempts + ' : git ' + ($pushArgs -join ' ')) -ForegroundColor Cyan
@@ -223,9 +263,8 @@ for ($i = 1; $i -le $Attempts; $i++) {
 
 Write-Host ''
 Write-Host ("push still failing after $Attempts attempts.") -ForegroundColor Red
-Write-Host '  proxy : turn on your proxy client, then retry (or -Proxy http://127.0.0.1:7897)' -ForegroundColor Yellow
+Write-Host '  proxy : start your proxy client, then retry (or -Proxy http://127.0.0.1:7897)' -ForegroundColor Yellow
 Write-Host '  dns   : ipconfig /flushdns in an elevated shell, then retry' -ForegroundColor Yellow
 Write-Host '  check : git ls-remote --heads origin' -ForegroundColor Yellow
-Write-Host '  tls   : git -c http.sslBackend=openssl ls-remote --heads origin' -ForegroundColor Yellow
 Write-Host '  ssh   : git remote set-url origin git@github.com:dasuda13/dsh-mode-exchange.git' -ForegroundColor Yellow
 exit 1
