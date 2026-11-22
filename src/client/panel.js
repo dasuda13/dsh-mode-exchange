@@ -492,9 +492,9 @@ export function makePanel(React, deps) {
     const switchTab = h('div', { className: 'dsh-me-stack' },
       statusCard,
       h(Section, { title: t('picker.session') }, h(Card, null, sessionPicker)),
-      h(Notice, { kind: 'warn' }, t('switch.softNotice')),
       h(Section, { title: t('switch.heading') },
         h(Card, null,
+          h(Notice, { kind: 'warn' }, t('switch.softNotice')),
           h(Select, {
             label: t('switch.target'),
             value: target,
@@ -748,7 +748,7 @@ export function makePanel(React, deps) {
       report ? renderReport(report) : null,
     )
 
-    return h('div', { className: 'dsh-me-root' },
+    return h('div', { className: 'dsh-me-root', 'data-surface': 'page' },
       h(StyleTag, { key: 'style' }),
       header,
       tabs,
