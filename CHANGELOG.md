@@ -4,7 +4,7 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.1.10] - 2026-11-23
 
 ### 修复
 - **迁移失败的报告终于带原因**：失败原因同时写进报告的 `error` 字段与

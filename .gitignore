@@ -19,6 +19,13 @@ build/Release/
 .refs/
 .dsh-vision-router/
 
+# ---- DrawAI 画布/动效的本地缓存（与本插件无关，体积很大） ----
+.drawai-cache/
+.drawai-motion/
+*.drawai
+*.drawai.media/
+.out/
+
 # ---- 根目录一次性排查产物 ----
 .asar-header.json
 .out-3rd.txt
