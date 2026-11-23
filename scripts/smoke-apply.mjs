@@ -147,7 +147,11 @@ check(
   const probe = mod.Config['~standard'].validate({ enableTeam: 'yes' })
   check('Config 拒绝类型错误的字段', Array.isArray(probe.issues) && probe.issues[0]?.path?.[0] === 'enableTeam', JSON.stringify(probe))
   const filled = mod.Config['~standard'].validate({})
-  check('Config 补齐六个默认值', filled.value?.confirmBeforeMigrate === true && Object.keys(filled.value ?? {}).length === 6, JSON.stringify(filled.value))
+  check('Config 补齐七个默认值',
+    filled.value?.confirmBeforeMigrate === true
+      && filled.value?.autoOpenTarget === true
+      && Object.keys(filled.value ?? {}).length === 7,
+    JSON.stringify(filled.value))
 }
 check(
   'inject 含五个必需服务',

@@ -210,6 +210,7 @@ async function runJob(ctx, job) {
     log: { path: '', metaPath: '', sha256: '', verified: false },
     team: { requested: job.team, enabled: false },
     oldSession: { requested: job.deleteOld, archived: false },
+    error: null,
     remainingSteps: [],
     timeline,
   }
@@ -342,15 +343,24 @@ async function runJob(ctx, job) {
       `${imported.eventCount} 条原生事件已落盘${imported.location === undefined ? '' : `（${imported.location}）`}`,
     )
 
-    // 来源标记 + 备注（FR-12 / FR-7 的 --note）
-    await appendProvenance(ctx, {
-      sessionId: targetSessionId,
-      sourceSessionId: sessionId,
-      sourceTitle: report.source.title,
-      fromMode: report.source.mode,
-      toMode: mode.id,
-      note: job.note,
-    })
+    // 来源标记 + 备注（FR-12 / FR-7 的 --note）。
+    // 只是给新会话留一句来历，任何失败都不该让整次迁移判失败：
+    // 这里包一层 try/catch，appendProvenance 内部也已全包，双保险。
+    /** @type {boolean} */
+    let provenance = false
+    try {
+      provenance = await appendProvenance(ctx, {
+        sessionId: targetSessionId,
+        sourceSessionId: sessionId,
+        sourceTitle: report.source.title,
+        fromMode: report.source.mode,
+        toMode: mode.id,
+        note: job.note,
+      })
+    } catch {
+      provenance = false
+    }
+    mark('  写入来源标记', provenance, provenance ? '已在新会话开头写入迁移来历' : '未能写入来源标记（不影响迁移）')
     await ledger.write(dirs, { sourceSessionId: sessionId, step: 4 })
 
     // 挂工作区（FR-8 未强制，但新会话要能被侧栏按工作区分组看到）。
@@ -415,6 +425,26 @@ async function runJob(ctx, job) {
     }
     await ledger.write(dirs, { sourceSessionId: sessionId, step: 6, backupPath: report.oldSession.backupPath ?? null })
 
+    // ---------------------------------------------------------------- 置顶新会话
+    // 新会话默认排在列表末尾（按创建时间倒序的既有实现里，旧会话在上面），
+    // 迁移完还要用户自己翻列表去找。这里把它置顶，配合客户端「自动切到新会话」，
+    // 迁移结束就停在新建的那个窗口上。置顶失败不影响迁移结果。
+    if (report.target !== undefined) {
+      /** @type {boolean} */
+      let pinned = false
+      try {
+        const registry = serviceOf(ctx, 'workspaceRegistry')
+        if (registry !== undefined && typeof registry.pinSession === 'function') {
+          await registry.pinSession(targetSessionId)
+          pinned = true
+        }
+      } catch {
+        pinned = false
+      }
+      report.target.pinned = pinned
+      mark('  置顶新会话', pinned, pinned ? '新会话已置顶到列表顶部' : '未能置顶（不影响迁移）')
+    }
+
     // ---------------------------------------------------------------- ⑦ 报告
     step(6, ledger.stepLabel(6))
     report.ok = true
@@ -436,9 +466,15 @@ async function runJob(ctx, job) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     report.ok = false
+    // 真实原因必须写进报告本身：只写 status.message 的话，迁移一结束它就丢了，
+    // 用户打开报告文件只看到「中止在第 N 步」，不知道到底为什么失败。
+    report.error = message
     report.finishedAt = Date.now()
     report.elapsedMs = report.finishedAt - startedAt
-    if (report.remainingSteps.length === 0) {
+    const hadSteps = report.remainingSteps.length > 0
+    // 原因永远排在最前：它是用户唯一真正需要的诊断信息。
+    report.remainingSteps.unshift(`失败原因：${message}`)
+    if (!hadSteps) {
       report.remainingSteps.push(
         `迁移在第 ${status.stepIndex + 1} 步（${status.stepName}）中止。`,
         report.log.path.length > 0 ? `已导出的日志保留在 ${report.log.path}` : '尚未产生日志文件。',
@@ -642,19 +678,19 @@ async function verifyImport(ctx, input) {
  * @returns {Promise<boolean>}
  */
 async function appendProvenance(ctx, input) {
-  const agent = liveAgent(ctx, input.sessionId)
-  const session = agent?.session
-  if (session === undefined || typeof session.append !== 'function') return false
-  const at = new Date().toISOString()
-  const lines = [
-    `【迁移来源】本会话由会话 ${input.sourceTitle}（${input.sourceSessionId}）于 ${at} 迁移而来；`
-      + `模式由「${input.fromMode ?? '未知'}」切换为「${input.toMode}」。`,
-    '历史消息与工具调用记录已作为原生事件序列导入，可以直接在此基础上继续对话。',
-  ]
-  if (input.note !== undefined) {
-    lines.push('', `用户备注：${input.note}`)
-  }
   try {
+    const agent = liveAgent(ctx, input.sessionId)
+    const session = agent?.session
+    if (session === undefined || typeof session.append !== 'function') return false
+    const at = new Date().toISOString()
+    const lines = [
+      `【迁移来源】本会话由会话 ${input.sourceTitle}（${input.sourceSessionId}）于 ${at} 迁移而来；`
+        + `模式由「${input.fromMode ?? '未知'}」切换为「${input.toMode}」。`,
+      '历史消息与工具调用记录已作为原生事件序列导入，可以直接在此基础上继续对话。',
+    ]
+    if (input.note !== undefined) {
+      lines.push('', `用户备注：${input.note}`)
+    }
     session.append(
       'user/message',
       {
@@ -667,6 +703,7 @@ async function appendProvenance(ctx, input) {
     )
     return true
   } catch {
+    // 「写不写来历」不影响迁移是否成立：整段兜住，返回 false 让上层记一笔即可。
     return false
   }
 }

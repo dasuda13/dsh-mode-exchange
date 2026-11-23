@@ -33,6 +33,8 @@ export const DEFAULTS = {
   exportDir: '',
   keepExportCopy: true,
   confirmBeforeMigrate: true,
+  /** 迁移成功后是否自动切到新建的会话（并把它置顶）。 */
+  autoOpenTarget: true,
 }
 
 /** 字段声明：类型、文案、默认值各只有一份，schema 与文档都从这里取。 */
@@ -43,6 +45,7 @@ const FIELDS = [
   { key: 'exportDir', type: 'string', description: '日志导出根目录；留空表示 <工作目录>/.dsh/mode-exchange。' },
   { key: 'keepExportCopy', type: 'boolean', description: '是否保留导出的日志副本（关闭后成功迁移会删除导出文件）。' },
   { key: 'confirmBeforeMigrate', type: 'boolean', description: '迁移前是否强制确认；关闭后归档旧会话将不再询问。' },
+  { key: 'autoOpenTarget', type: 'boolean', description: '迁移成功后是否自动切到新建的会话。' },
 ]
 
 /** 类型名 → 给用户看的期望值。 */
@@ -103,6 +106,9 @@ export function normalizeConfig(config) {
     confirmBeforeMigrate: typeof source.confirmBeforeMigrate === 'boolean'
       ? source.confirmBeforeMigrate
       : DEFAULTS.confirmBeforeMigrate,
+    autoOpenTarget: typeof source.autoOpenTarget === 'boolean'
+      ? source.autoOpenTarget
+      : DEFAULTS.autoOpenTarget,
   }
 }
 

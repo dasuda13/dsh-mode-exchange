@@ -217,6 +217,26 @@ export function makePanel(React, deps) {
       if (typeof config.enableTeam === 'boolean') setTeam(config.enableTeam && state.capabilities && state.capabilities.teamSwitch === true)
     }, [state.config, state.currentMode, state.capabilities, sessionId])
 
+    /**
+     * 迁移成功后自动停到新建会话（每个任务只做一次）。
+     *
+     * 判断条件全部来自任务状态本身，不依赖面板此刻停在哪个会话：
+     * 从右键菜单发起的迁移也要能自动切过去。
+     */
+    const autoOpenedRef = React.useRef('')
+    function maybeAutoOpen(value) {
+      if (!value || value.status !== 'done') return
+      const source = value.report || {}
+      if (source.ok !== true) return
+      const config = state.config || {}
+      if (config.autoOpenTarget === false) return
+      const target_ = source.target && source.target.sessionId
+      if (!target_) return
+      if (autoOpenedRef.current === value.jobId) return
+      autoOpenedRef.current = value.jobId
+      openSessionById(target_)
+    }
+
     // 任务轮询：运行中每 800ms 读一次状态，同时更新耗时。
     React.useEffect(() => {
       if (!job || !job.jobId) return
@@ -231,6 +251,7 @@ export function makePanel(React, deps) {
           setJob(value)
           setElapsed(Date.now() - startedAt)
           if (value && value.report) setReport(value.report)
+          maybeAutoOpen(value)
         } catch (cause) {
           if (!stopped) setError(cause.message || String(cause))
         }
@@ -440,19 +461,26 @@ export function makePanel(React, deps) {
       }
     }
 
-    function openTargetSession() {
-      const target_ = report && report.target && report.target.sessionId
-      if (!target_) return
+    /** 把主视图切到某条会话；拿不到 uiWorkspace 时降级为提示用户手动点。 */
+    function openSessionById(target_) {
+      if (!target_) return false
       try {
         const uiWorkspace = deps.ctx && typeof deps.ctx.get === 'function' ? deps.ctx.get('uiWorkspace') : null
         if (uiWorkspace && typeof uiWorkspace.openSession === 'function') {
           void uiWorkspace.openSession(target_)
-          return
+          return true
         }
       } catch (error) {
         void error
       }
-      setError('无法自动切换会话，请从左侧会话列表手动打开 ' + target_)
+      setError(t('migrate.openTargetFailed', { id: String(target_) }))
+      return false
+    }
+
+    function openTargetSession() {
+      const target_ = report && report.target && report.target.sessionId
+      if (!target_) return
+      openSessionById(target_)
     }
 
     const header = h(PanelHead, {
@@ -653,12 +681,25 @@ export function makePanel(React, deps) {
       const log = value.log || {}
       const oldSession = value.oldSession || {}
       const teamInfo = value.team || {}
+      // 失败原因优先级：报告里的 error 字段 → remainingSteps 里那句「失败原因：…」。
+      const reasonText = typeof value.error === 'string' && value.error.length > 0
+        ? value.error
+        : (value.remainingSteps || []).reduce((hit, line) => {
+          if (hit) return hit
+          const prefix = '失败原因：'
+          return typeof line === 'string' && line.startsWith(prefix) ? line.slice(prefix.length) : ''
+        }, '')
+      // 原因已经在上面单独用错误色条显示过了，列表里不再重复一遍。
+      const steps = (value.remainingSteps || []).filter(line => typeof line !== 'string' || !line.startsWith('失败原因：'))
       return h(Card, value.ok ? null : { tone: 'error' },
         h('div', { className: 'dsh-me-row' },
           h('span', { className: 'dsh-me-label' }, value.ok ? t('migrate.finished') : t('migrate.failed')),
           h(Badge, { tone: value.ok ? 'ok' : 'error' },
             oldSession.archived ? t('migrate.oldArchived') : t('migrate.oldKept')),
         ),
+        !value.ok && reasonText
+          ? h(Notice, { kind: 'error' }, t('migrate.failureReason', { reason: reasonText }))
+          : null,
         h('div', { className: 'dsh-me-stack-sm' },
           value.source ? h(Field, { label: t('migrate.source'), value: value.source.title || shortSessionId(value.source.sessionId) }) : null,
           value.target ? h(Field, { label: t('migrate.target2'), value: shortSessionId(value.target.sessionId), mono: true }) : null,
@@ -674,10 +715,10 @@ export function makePanel(React, deps) {
         ),
         teamInfo.reason ? h(Notice, { kind: 'warn' }, t('migrate.teamReason', { reason: teamInfo.reason })) : null,
         oldSession.reason ? h(Notice, { kind: 'note' }, t('migrate.oldReason', { reason: oldSession.reason })) : null,
-        value.remainingSteps && value.remainingSteps.length > 0
+        steps.length > 0
           ? h('div', { className: 'dsh-me-stack-sm' },
             h('span', { className: 'dsh-me-sectiontitle' }, t('migrate.remaining')),
-            h('ul', { className: 'dsh-me-list' }, value.remainingSteps.map((step, i) => h('li', { key: String(i) }, step))),
+            h('ul', { className: 'dsh-me-list' }, steps.map((step, i) => h('li', { key: String(i) }, step))),
           )
           : null,
         value.timeline && value.timeline.length > 0

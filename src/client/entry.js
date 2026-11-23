@@ -63,7 +63,12 @@ export function startModeExchangeClient(require) {
       } catch (error) {
         void error
       }
-      registerLocale(ctx)
+      try {
+        registerLocale(ctx)
+      } catch (error) {
+        // 语言包注册失败不该连累插槽：界面会退回中文兜底文案。
+        console.error('[dsh-mode-exchange] locale 注册失败：', error)
+      }
 
       const api = createApi(t)
       const store = createStore()
@@ -76,10 +81,15 @@ export function startModeExchangeClient(require) {
        * 所以面板/设置页只剩纯文本堆叠。这里改为直接建 <style>（宿主自带插件都这么做），
        * 按 data-plugin-css 去重，并在每个面板/设置页根节点再渲染一份 <StyleTag/> 兜底。
        */
-      ctx.effect(() => {
-        const tag = ensureGlobalStyle()
-        return () => { dropGlobalStyle(tag) }
-      }, 'mode-exchange styles')
+      try {
+        ctx.effect(() => {
+          const tag = ensureGlobalStyle()
+          return () => { dropGlobalStyle(tag) }
+        }, 'mode-exchange styles')
+      } catch (error) {
+        // 样式挂不上只是丑，不该拖垮插槽注册。
+        console.error('[dsh-mode-exchange] 样式注入失败：', error)
+      }
 
       /**
        * 订阅「当前会话」。sessions.list 是可观察快照，订阅后跟随主视图切换实时更新，
@@ -102,8 +112,28 @@ export function startModeExchangeClient(require) {
         return sessionId
       }
 
+      /**
+       * 逐项注册插槽。
+       *
+       * 宿主不同版本的插槽名并不保证齐全（例如某些版本没有 settings.section.icon），
+       * 而 ctx.slots.inject 命中不存在的插槽时会抛错。裸写法下任何一处抛错都会中断整个
+       * apply，后面的入口全部注册不上 —— 表现正是「插件显示已启动，侧栏图标和设置分节却
+       * 一个都不见了」。所以这里统一兜住：一项失败只记日志，不影响其余入口。
+       */
+      function safeSlot(name, register) {
+        try {
+          ctx.slots.inject(name, register)
+        } catch (error) {
+          try {
+            console.error('[dsh-mode-exchange] ' + name + ' 插槽注册失败：', error)
+          } catch (ignored) {
+            void ignored
+          }
+        }
+      }
+
       // ---- 中央面板 ----
-      ctx.slots.inject('main', () => ctx.slots.register(
+      safeSlot('main', () => ctx.slots.register(
         { name: 'main', key: PANEL_KEY, order: 40 },
         function ModeExchangePanel(props) {
           const sessionId = useActiveSessionId()
@@ -116,7 +146,7 @@ export function startModeExchangeClient(require) {
       ))
 
       // ---- 侧栏图标入口：id 与 main 的 key 同名，点击即切面板 ----
-      ctx.slots.inject('sidebar.panellist', () => ctx.slots.register(
+      safeSlot('sidebar.panellist', () => ctx.slots.register(
         {
           name: 'sidebar.panellist',
           id: PANEL_ENTRY_ID,
@@ -149,12 +179,12 @@ export function startModeExchangeClient(require) {
       ))
 
       // ---- 设置页与图标 ----
-      ctx.slots.inject('settings.section', () => ctx.slots.register(
+      safeSlot('settings.section', () => ctx.slots.register(
         { name: 'settings.section', id: SETTINGS_ID, order: 62, label: () => t('settings.title') },
         makeSettings(React, deps),
       ))
 
-      ctx.slots.inject('settings.section.icon', () => ctx.slots.register(
+      safeSlot('settings.section.icon', () => ctx.slots.register(
         { name: 'settings.section.icon', id: SETTINGS_ID, order: 62 },
         makeSettingsIcon(React),
       ))
@@ -164,7 +194,12 @@ export function startModeExchangeClient(require) {
        * 在会话列表行（session）与标题「更多」（sessionHeader）里加「切换模式」子菜单。
        * contextMenus 是可选服务：缺席时这里静默跳过，面板与设置页不受影响。
        */
-      mountSessionMenu(ctx, deps)
+      try {
+        mountSessionMenu(ctx, deps)
+      } catch (error) {
+        // contextMenus 是可选服务，缺席时静默跳过。
+        console.error('[dsh-mode-exchange] 右键菜单挂载失败：', error)
+      }
     },
   }
 }

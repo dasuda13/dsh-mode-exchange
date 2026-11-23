@@ -144,6 +144,8 @@ const ZH = {
   'migrate.timeline': '执行时间线',
   'migrate.remaining': '剩余可手动完成的步骤',
   'migrate.openTarget': '打开新会话',
+  'migrate.openTargetFailed': '无法自动切换会话，请从左侧会话列表手动打开 {id}',
+  'migrate.failureReason': '失败原因：{reason}',
   'migrate.reportFile': '报告文件：{path}',
 
   'steps.export.name': '导出会话日志',
@@ -186,13 +188,9 @@ const ZH = {
   'settings.deleteOldHint': '迁移成功并且新会话可用后，把旧会话归档',
   'settings.keepExportCopyHint': '关闭后迁移结束即删除导出的中间日志，只保留备份',
   'settings.confirmHint': '关闭后归档旧会话不再二次确认，建议保持开启',
-  'settings.groupBehavior': '默认行为',
-  'settings.groupExport': '导出与备份',
-  'settings.groupSafety': '安全确认',
-  'settings.deleteOldHint': '迁移成功并且新会话可用后，把旧会话归档',
-  'settings.keepExportCopyHint': '关闭后迁移结束即删除导出的中间日志，只保留备份',
-  'settings.confirmHint': '关闭后归档旧会话不再二次确认，建议保持开启',
   'settings.confirm': '迁移前强制确认',
+  'settings.autoOpenTarget': '迁移后自动打开新会话',
+  'settings.autoOpenTargetHint': '迁移成功就把窗口切到新建的会话，并把它置顶到会话列表顶部',
   'settings.confirmWarn': '关闭后，归档旧会话将不再弹窗确认。确定要关闭吗？',
   'settings.save': '保存设置',
   'settings.saving': '正在保存…',
@@ -328,6 +326,8 @@ const EN = {
   'migrate.timeline': 'Timeline',
   'migrate.remaining': 'Remaining manual steps',
   'migrate.openTarget': 'Open new session',
+  'migrate.openTargetFailed': 'Could not switch sessions automatically; open {id} from the session list',
+  'migrate.failureReason': 'Reason: {reason}',
   'migrate.reportFile': 'Report file: {path}',
 
   'steps.export.name': 'Export session log',
@@ -371,6 +371,8 @@ const EN = {
   'settings.keepExportCopyHint': 'Turn off to delete the intermediate export log after migration; only the backup is kept',
   'settings.confirmHint': 'Turn off to skip the extra confirmation when archiving; keeping it on is safer',
   'settings.confirm': 'Require confirmation before migrating',
+  'settings.autoOpenTarget': 'Open the new session after migrating',
+  'settings.autoOpenTargetHint': 'Switch the main view to the rebuilt session and pin it to the top of the list',
   'settings.confirmWarn': 'When off, archiving the old session stops asking. Turn it off?',
   'settings.save': 'Save settings',
   'settings.saving': 'Saving…',
@@ -2071,6 +2073,26 @@ function makePanel(React, deps) {
       if (typeof config.enableTeam === 'boolean') setTeam(config.enableTeam && state.capabilities && state.capabilities.teamSwitch === true)
     }, [state.config, state.currentMode, state.capabilities, sessionId])
 
+    /**
+     * 迁移成功后自动停到新建会话（每个任务只做一次）。
+     *
+     * 判断条件全部来自任务状态本身，不依赖面板此刻停在哪个会话：
+     * 从右键菜单发起的迁移也要能自动切过去。
+     */
+    const autoOpenedRef = React.useRef('')
+    function maybeAutoOpen(value) {
+      if (!value || value.status !== 'done') return
+      const source = value.report || {}
+      if (source.ok !== true) return
+      const config = state.config || {}
+      if (config.autoOpenTarget === false) return
+      const target_ = source.target && source.target.sessionId
+      if (!target_) return
+      if (autoOpenedRef.current === value.jobId) return
+      autoOpenedRef.current = value.jobId
+      openSessionById(target_)
+    }
+
     // 任务轮询：运行中每 800ms 读一次状态，同时更新耗时。
     React.useEffect(() => {
       if (!job || !job.jobId) return
@@ -2085,6 +2107,7 @@ function makePanel(React, deps) {
           setJob(value)
           setElapsed(Date.now() - startedAt)
           if (value && value.report) setReport(value.report)
+          maybeAutoOpen(value)
         } catch (cause) {
           if (!stopped) setError(cause.message || String(cause))
         }
@@ -2294,19 +2317,26 @@ function makePanel(React, deps) {
       }
     }
 
-    function openTargetSession() {
-      const target_ = report && report.target && report.target.sessionId
-      if (!target_) return
+    /** 把主视图切到某条会话；拿不到 uiWorkspace 时降级为提示用户手动点。 */
+    function openSessionById(target_) {
+      if (!target_) return false
       try {
         const uiWorkspace = deps.ctx && typeof deps.ctx.get === 'function' ? deps.ctx.get('uiWorkspace') : null
         if (uiWorkspace && typeof uiWorkspace.openSession === 'function') {
           void uiWorkspace.openSession(target_)
-          return
+          return true
         }
       } catch (error) {
         void error
       }
-      setError('无法自动切换会话，请从左侧会话列表手动打开 ' + target_)
+      setError(t('migrate.openTargetFailed', { id: String(target_) }))
+      return false
+    }
+
+    function openTargetSession() {
+      const target_ = report && report.target && report.target.sessionId
+      if (!target_) return
+      openSessionById(target_)
     }
 
     const header = h(PanelHead, {
@@ -2507,12 +2537,25 @@ function makePanel(React, deps) {
       const log = value.log || {}
       const oldSession = value.oldSession || {}
       const teamInfo = value.team || {}
+      // 失败原因优先级：报告里的 error 字段 → remainingSteps 里那句「失败原因：…」。
+      const reasonText = typeof value.error === 'string' && value.error.length > 0
+        ? value.error
+        : (value.remainingSteps || []).reduce((hit, line) => {
+          if (hit) return hit
+          const prefix = '失败原因：'
+          return typeof line === 'string' && line.startsWith(prefix) ? line.slice(prefix.length) : ''
+        }, '')
+      // 原因已经在上面单独用错误色条显示过了，列表里不再重复一遍。
+      const steps = (value.remainingSteps || []).filter(line => typeof line !== 'string' || !line.startsWith('失败原因：'))
       return h(Card, value.ok ? null : { tone: 'error' },
         h('div', { className: 'dsh-me-row' },
           h('span', { className: 'dsh-me-label' }, value.ok ? t('migrate.finished') : t('migrate.failed')),
           h(Badge, { tone: value.ok ? 'ok' : 'error' },
             oldSession.archived ? t('migrate.oldArchived') : t('migrate.oldKept')),
         ),
+        !value.ok && reasonText
+          ? h(Notice, { kind: 'error' }, t('migrate.failureReason', { reason: reasonText }))
+          : null,
         h('div', { className: 'dsh-me-stack-sm' },
           value.source ? h(Field, { label: t('migrate.source'), value: value.source.title || shortSessionId(value.source.sessionId) }) : null,
           value.target ? h(Field, { label: t('migrate.target2'), value: shortSessionId(value.target.sessionId), mono: true }) : null,
@@ -2528,10 +2571,10 @@ function makePanel(React, deps) {
         ),
         teamInfo.reason ? h(Notice, { kind: 'warn' }, t('migrate.teamReason', { reason: teamInfo.reason })) : null,
         oldSession.reason ? h(Notice, { kind: 'note' }, t('migrate.oldReason', { reason: oldSession.reason })) : null,
-        value.remainingSteps && value.remainingSteps.length > 0
+        steps.length > 0
           ? h('div', { className: 'dsh-me-stack-sm' },
             h('span', { className: 'dsh-me-sectiontitle' }, t('migrate.remaining')),
-            h('ul', { className: 'dsh-me-list' }, value.remainingSteps.map((step, i) => h('li', { key: String(i) }, step))),
+            h('ul', { className: 'dsh-me-list' }, steps.map((step, i) => h('li', { key: String(i) }, step))),
           )
           : null,
         value.timeline && value.timeline.length > 0
@@ -2631,7 +2674,7 @@ const __mod_settings = (() => {
  */
 
 const { Notice, Select, Toggle, TextField, Button, Card, Section, PanelHead, StyleTag } = __mod_ui;
-const FIELDS = ['defaultMode', 'deleteOldSession', 'enableTeam', 'exportDir', 'keepExportCopy', 'confirmBeforeMigrate']
+const FIELDS = ['defaultMode', 'deleteOldSession', 'enableTeam', 'exportDir', 'keepExportCopy', 'confirmBeforeMigrate', 'autoOpenTarget']
 
 function pickConfig(source) {
   const next = {}
@@ -2740,6 +2783,12 @@ function makeSettings(React, deps) {
               onChange: value => patch('enableTeam', value),
               disabled: !teamSupported,
               hint: teamSupported ? t('settings.teamHint') : t('migrate.teamUnsupported'),
+            }),
+            h(Toggle, {
+              label: t('settings.autoOpenTarget'),
+              hint: t('settings.autoOpenTargetHint'),
+              checked: draft.autoOpenTarget !== false,
+              onChange: value => patch('autoOpenTarget', value),
             }),
           ),
         ),
@@ -3357,7 +3406,12 @@ function startModeExchangeClient(require) {
       } catch (error) {
         void error
       }
-      registerLocale(ctx)
+      try {
+        registerLocale(ctx)
+      } catch (error) {
+        // 语言包注册失败不该连累插槽：界面会退回中文兜底文案。
+        console.error('[dsh-mode-exchange] locale 注册失败：', error)
+      }
 
       const api = createApi(t)
       const store = createStore()
@@ -3370,10 +3424,15 @@ function startModeExchangeClient(require) {
        * 所以面板/设置页只剩纯文本堆叠。这里改为直接建 <style>（宿主自带插件都这么做），
        * 按 data-plugin-css 去重，并在每个面板/设置页根节点再渲染一份 <StyleTag/> 兜底。
        */
-      ctx.effect(() => {
-        const tag = ensureGlobalStyle()
-        return () => { dropGlobalStyle(tag) }
-      }, 'mode-exchange styles')
+      try {
+        ctx.effect(() => {
+          const tag = ensureGlobalStyle()
+          return () => { dropGlobalStyle(tag) }
+        }, 'mode-exchange styles')
+      } catch (error) {
+        // 样式挂不上只是丑，不该拖垮插槽注册。
+        console.error('[dsh-mode-exchange] 样式注入失败：', error)
+      }
 
       /**
        * 订阅「当前会话」。sessions.list 是可观察快照，订阅后跟随主视图切换实时更新，
@@ -3396,8 +3455,28 @@ function startModeExchangeClient(require) {
         return sessionId
       }
 
+      /**
+       * 逐项注册插槽。
+       *
+       * 宿主不同版本的插槽名并不保证齐全（例如某些版本没有 settings.section.icon），
+       * 而 ctx.slots.inject 命中不存在的插槽时会抛错。裸写法下任何一处抛错都会中断整个
+       * apply，后面的入口全部注册不上 —— 表现正是「插件显示已启动，侧栏图标和设置分节却
+       * 一个都不见了」。所以这里统一兜住：一项失败只记日志，不影响其余入口。
+       */
+      function safeSlot(name, register) {
+        try {
+          ctx.slots.inject(name, register)
+        } catch (error) {
+          try {
+            console.error('[dsh-mode-exchange] ' + name + ' 插槽注册失败：', error)
+          } catch (ignored) {
+            void ignored
+          }
+        }
+      }
+
       // ---- 中央面板 ----
-      ctx.slots.inject('main', () => ctx.slots.register(
+      safeSlot('main', () => ctx.slots.register(
         { name: 'main', key: PANEL_KEY, order: 40 },
         function ModeExchangePanel(props) {
           const sessionId = useActiveSessionId()
@@ -3410,7 +3489,7 @@ function startModeExchangeClient(require) {
       ))
 
       // ---- 侧栏图标入口：id 与 main 的 key 同名，点击即切面板 ----
-      ctx.slots.inject('sidebar.panellist', () => ctx.slots.register(
+      safeSlot('sidebar.panellist', () => ctx.slots.register(
         {
           name: 'sidebar.panellist',
           id: PANEL_ENTRY_ID,
@@ -3443,12 +3522,12 @@ function startModeExchangeClient(require) {
       ))
 
       // ---- 设置页与图标 ----
-      ctx.slots.inject('settings.section', () => ctx.slots.register(
+      safeSlot('settings.section', () => ctx.slots.register(
         { name: 'settings.section', id: SETTINGS_ID, order: 62, label: () => t('settings.title') },
         makeSettings(React, deps),
       ))
 
-      ctx.slots.inject('settings.section.icon', () => ctx.slots.register(
+      safeSlot('settings.section.icon', () => ctx.slots.register(
         { name: 'settings.section.icon', id: SETTINGS_ID, order: 62 },
         makeSettingsIcon(React),
       ))
@@ -3458,7 +3537,12 @@ function startModeExchangeClient(require) {
        * 在会话列表行（session）与标题「更多」（sessionHeader）里加「切换模式」子菜单。
        * contextMenus 是可选服务：缺席时这里静默跳过，面板与设置页不受影响。
        */
-      mountSessionMenu(ctx, deps)
+      try {
+        mountSessionMenu(ctx, deps)
+      } catch (error) {
+        // contextMenus 是可选服务，缺席时静默跳过。
+        console.error('[dsh-mode-exchange] 右键菜单挂载失败：', error)
+      }
     },
   }
 }

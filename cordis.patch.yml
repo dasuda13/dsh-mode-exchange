@@ -13,3 +13,4 @@
         exportDir: ''
         keepExportCopy: true
         confirmBeforeMigrate: true
+        autoOpenTarget: true

@@ -37,7 +37,7 @@ const check = (name, ok, detail = '') => checks.push({ name, ok, detail })
 
 // ---------------------------------------------------------------- config
 {
-  check('DEFAULTS 六字段', Object.keys(config.DEFAULTS).length === 6, Object.keys(config.DEFAULTS).join(','))
+  check('DEFAULTS 七字段', Object.keys(config.DEFAULTS).length === 7, Object.keys(config.DEFAULTS).join(','))
   check('DEFAULTS.deleteOldSession = true', config.DEFAULTS.deleteOldSession === true)
   check('DEFAULTS.enableTeam = false', config.DEFAULTS.enableTeam === false)
 

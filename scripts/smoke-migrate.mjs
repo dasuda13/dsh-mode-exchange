@@ -92,6 +92,12 @@ function makeServices(options) {
         if (options.archiveWorks === false) throw new Error('拒绝归档：权限不足')
         sinks.archived.push(true)
       },
+      async pinSession(id) {
+        // 置顶只是排序上的锦上添花，失败不能影响迁移结论。
+        if (options.pinWorks === false) throw new Error('拒绝置顶：权限不足')
+        sinks.pinned.push(id)
+        return { ok: true, value: { pinnedSessionIds: [id] } }
+      },
     },
     commands: { register(definition) { sinks.commands.push(definition); return () => {} } },
     agentPresets: {
@@ -187,7 +193,7 @@ function makeCtx(injectList, services, sinks) {
 }
 
 function makeSinks() {
-  return { commands: [], guards: [], effects: [], injections: [], logs: [], attached: [], teamCalls: [], archived: [] }
+  return { commands: [], guards: [], effects: [], injections: [], logs: [], attached: [], teamCalls: [], archived: [], pinned: [] }
 }
 
 /** 跑一次完整迁移并等它结束（startMigration 是后台跑，这里轮询 jobStatus）。 */
@@ -254,6 +260,8 @@ try {
   check('A 第 4 步（导入）通过', a.status?.report?.timeline?.some(f => f.step.includes('导入日志') && f.ok === true))
   check('A 新会话挂上了工作区', a.status?.report?.target?.attachedToWorkspace === true)
   check('A 四个必需步骤都记了时间线', (a.status?.report?.timeline?.length ?? 0) >= 4, String(a.status?.report?.timeline?.length))
+  check('A 新会话被置顶', a.status?.report?.target?.pinned === true)
+  check('A 置顶走的是 workspaceRegistry.pinSession', a.sinks?.pinned?.length === 1, String(a.sinks?.pinned?.length ?? 0))
   const ledgerA = join(root, 'data-a', 'migrations', sessionA + '.json')
   check('A 台账落盘且 status=done', existsSync(ledgerA) && JSON.parse(await readFile(ledgerA, 'utf8')).status === 'done')
 
@@ -307,6 +315,8 @@ try {
   })
   check('E 一直未物化时迁移判失败（不报假成功）', e.status?.status === 'failed', e.status?.status + ' / ' + (e.status?.message ?? ''))
   check('E 失败原因提到「尚未物化」', /尚未物化/.test(String(e.status?.message ?? '')), String(e.status?.message ?? '').slice(0, 80))
+  check('E 报告本身带 error 字段（不只在 status.message 里）', /尚未物化/.test(String(e.status?.report?.error ?? '')), String(e.status?.report?.error ?? '').slice(0, 60))
+  check('E 报告 remainingSteps 第一条就是失败原因', String(e.status?.report?.remainingSteps?.[0] ?? '').startsWith('失败原因：'), String(e.status?.report?.remainingSteps?.[0] ?? '').slice(0, 40))
 
   // ---- 场景 F：持久层连 open 都没有 → 不许报假成功 --------------------------
   const sessionF = 'session-ffff6666-0000-0000-0000-000000000006'
@@ -318,6 +328,18 @@ try {
   })
   check('F 无 open 时迁移判失败（不报假成功）', f.status?.status === 'failed', f.status?.status + ' / ' + (f.status?.message ?? ''))
   check('F 失败原因说明无法复核落盘', /无法确认新会话是否真的落盘/.test(String(f.status?.message ?? '')), String(f.status?.message ?? '').slice(0, 80))
+
+  // ---- 场景 G：置顶失败，但迁移仍然算成功 --------------------------------
+  const sessionG = 'session-gggg7777-0000-0000-0000-000000000007'
+  const g = await runOnce({
+    sessionId: sessionG,
+    cwd: join(root, 'ws-g'),
+    exportDir: join(root, 'data-g'),
+    pinWorks: false,
+  })
+  check('G 置顶失败时迁移仍然 done', g.status?.status === 'done', g.status?.status + ' / ' + (g.status?.message ?? ''))
+  check('G 报告标注未置顶', g.status?.report?.target?.pinned === false)
+  check('G 时间线里置顶项存在但为 false', g.status?.report?.timeline?.some(f => f.step.includes('置顶新会话') && f.ok === false))
 } finally {
   await rm(root, { recursive: true, force: true })
 }

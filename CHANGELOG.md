@@ -6,6 +6,26 @@
 
 ## [Unreleased]
 
+### 修复
+- **迁移失败的报告终于带原因**：失败原因同时写进报告的 `error` 字段与
+  `remainingSteps` 第一条（「失败原因：…」），面板在失败徽章下方用错误色条直接显示。
+  此前 `error.message` 只进内存里的任务状态与 console，迁移一结束就没了，用户打开报告
+  只看到「中止在第 4 步」，不知道到底为什么。
+- **写入来源标记不再可能中断迁移**：`appendProvenance` 整体进 try（含 `liveAgent` 与
+  `session.append` 判定），调用点再包一层；写不上来历只记一条时间线，不影响迁移结论。
+  上一版这处是裸 await，宿主返回的 agent 形状一变就会在「导入」成功之后把整次迁移判失败。
+- 插槽注册逐项兜底（`safeSlot`）：`main` / `sidebar.panellist` / `settings.section` /
+  `settings.section.icon` 任一处抛错只记 console，不再中断整个 `apply()`
+  —— 之前一处失败就会「插件显示已启动，侧栏图标和设置分节却都不见了」。
+  语言包注册、样式注入、右键菜单挂载同样各自兜住。
+
+### 新增
+- **迁移成功后自动停在新建会话**：客户端在任务转为 `done` 且报告成功时调
+  `uiWorkspace.openSession(target)` 把主视图切过去（每个任务只做一次），宿主侧同时用
+  `workspaceRegistry.pinSession` 把新会话置顶；置顶结果写进报告的 `target.pinned`。
+  新增设置项**「迁移后自动打开新会话」**（`autoOpenTarget`，默认开），关掉就仍停在原会话。
+  配置项由 6 个变 7 个。
+
 ### 界面
 - 面板与设置页统一成「行列表」卡片：卡片本身不再内衬，字段 / 开关 / 选择器各占一行，
   行与行用 .5px 分隔线串联（对齐宿主 GeneralSection 的行式列表），消除了「R20 卡片 →

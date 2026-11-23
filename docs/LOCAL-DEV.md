@@ -130,6 +130,7 @@ plugin_manager({ action: "list_bundles" })          // 看 bundle 行有没有�
         exportDir: ''
         keepExportCopy: true
         confirmBeforeMigrate: true
+        autoOpenTarget: true
 ```
 
 宿主对本地目录的 `name` 是把它当路径解析的，所以用正斜杠或转义反斜杠都可以。

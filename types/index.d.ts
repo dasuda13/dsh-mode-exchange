@@ -20,6 +20,8 @@ export interface ModeExchangeConfig {
   keepExportCopy: boolean
   /** 迁移前是否强制确认（关闭需二次警告）。 */
   confirmBeforeMigrate: boolean
+  /** 迁移成功后是否自动切到新建的会话（并把新会话置顶）。 */
+  autoOpenTarget: boolean
 }
 
 /** 一个可用模式（来自运行时 agentPresets.list()，不做任何硬编码）。 */
@@ -118,6 +120,8 @@ export interface MigrationReport {
     imported: boolean
     importedEventCount: number
     attachedToWorkspace: boolean
+    /** 迁移结束时是否已把新会话置顶（置顶失败为 false，不影响迁移结果）。 */
+    pinned?: boolean
     /** 面板指定了目标工作区时才会出现。 */
     workspaceId?: string
     workspaceTitle?: string
@@ -140,6 +144,8 @@ export interface MigrationReport {
     backupPath?: string
     reason?: string
   }
+  /** 失败原因（成功时为 null）；与 remainingSteps 的第一条同源。 */
+  error?: string | null
   /** 失败时给出的「可手动完成的剩余步骤」。 */
   remainingSteps: string[]
   /** 逐步骤的时间线，用于面板展示耗时。 */

@@ -5,7 +5,7 @@
 
 import { Notice, Select, Toggle, TextField, Button, Card, Section, PanelHead, StyleTag } from './ui.js'
 
-const FIELDS = ['defaultMode', 'deleteOldSession', 'enableTeam', 'exportDir', 'keepExportCopy', 'confirmBeforeMigrate']
+const FIELDS = ['defaultMode', 'deleteOldSession', 'enableTeam', 'exportDir', 'keepExportCopy', 'confirmBeforeMigrate', 'autoOpenTarget']
 
 function pickConfig(source) {
   const next = {}
@@ -114,6 +114,12 @@ export function makeSettings(React, deps) {
               onChange: value => patch('enableTeam', value),
               disabled: !teamSupported,
               hint: teamSupported ? t('settings.teamHint') : t('migrate.teamUnsupported'),
+            }),
+            h(Toggle, {
+              label: t('settings.autoOpenTarget'),
+              hint: t('settings.autoOpenTargetHint'),
+              checked: draft.autoOpenTarget !== false,
+              onChange: value => patch('autoOpenTarget', value),
             }),
           ),
         ),
